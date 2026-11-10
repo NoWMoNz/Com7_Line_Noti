@@ -11,7 +11,7 @@ import type { ApplyResponse, ApplyState } from '@/lib/apply/types';
 import { callApi, initLiff, readTokenFromUrl, uploadFiles, type LiffInfo } from './client-lib';
 import { DocGroup, DocsHome, type DocTarget } from './docs';
 import { PdpaScreen, PendingScreen, RegisterScreen, type RegisterInput } from './onboarding';
-import { Button, Spinner, StatusPanel, TopBar } from './ui';
+import { Button, Spinner, StatusPanel, TopBar } from '@/components/ui';
 import { UploadScreen } from './upload';
 
 type View = { name: 'home' } | { name: 'group'; docKey: string } | { name: 'upload'; docKey: string; subitemTitle?: string };

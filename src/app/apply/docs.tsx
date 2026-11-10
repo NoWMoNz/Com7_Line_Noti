@@ -2,7 +2,7 @@
 
 import { useState } from 'react';
 import type { DocItemView, DocsView } from '@/lib/apply/types';
-import { Badge, Button, docBadge, Icon, StatusPanel, subitemBadge } from './ui';
+import { Badge, Button, docBadge, Icon, StatusPanel, subitemBadge } from '@/components/ui';
 
 /** ปลายทางเมื่อแตะรายการ: เอกสาร (มีหัวข้อย่อย → หน้ารายการย่อย) หรือหัวข้อย่อย */
 export type DocTarget = { docKey: string; subitemTitle?: string };

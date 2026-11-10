@@ -38,7 +38,10 @@ export interface NotifyFlexOptions {
   subtitle?: string;
   greeting?: string;
   note?: { label?: string; text: string; tone?: Tone };
-  button?: { label: string; uri: string; color?: string };
+  /** รายการแบบมีจุดนำหน้า เช่น ชื่อเอกสารที่ผ่าน/ต้องแก้ */
+  list?: { title?: string; items: string[] };
+  /** ปุ่มเปิดลิงก์ (uri) หรือปุ่มส่ง postback กลับเข้าแชท */
+  button?: { label: string; uri?: string; postback?: { data: string; displayText?: string }; color?: string };
   headerColor?: string;
   logoUrl: string | null;
 }
@@ -50,6 +53,26 @@ export function buildNotifyFlex(opts: NotifyFlexOptions): FlexBubble {
 
   if (opts.greeting) {
     body.push({ type: 'text', text: opts.greeting, weight: 'bold', size: 'md', color: FLEX_THEME.text, wrap: true });
+  }
+  if (opts.list && opts.list.items.length > 0) {
+    body.push({
+      type: 'box',
+      layout: 'vertical',
+      margin: 'md',
+      spacing: 'xs',
+      contents: [
+        ...(opts.list.title
+          ? [{ type: 'text', text: opts.list.title, size: 'xs', weight: 'bold', color: FLEX_THEME.sub }]
+          : []),
+        ...opts.list.items.map((item) => ({
+          type: 'text',
+          text: `• ${item}`,
+          size: 'sm',
+          color: FLEX_THEME.text,
+          wrap: true,
+        })),
+      ],
+    });
   }
   if (opts.note?.text) {
     const nt = FLEX_THEME[opts.note.tone ?? 'warn'];
@@ -118,7 +141,14 @@ export function buildNotifyFlex(opts: NotifyFlexOptions): FlexBubble {
           style: 'primary',
           color: opts.button.color ?? theme.button,
           height: 'sm',
-          action: { type: 'uri', label: opts.button.label, uri: opts.button.uri },
+          action: opts.button.postback
+            ? {
+                type: 'postback',
+                label: opts.button.label,
+                data: opts.button.postback.data,
+                ...(opts.button.postback.displayText ? { displayText: opts.button.postback.displayText } : {}),
+              }
+            : { type: 'uri', label: opts.button.label, uri: opts.button.uri ?? '' },
         },
       ],
     };

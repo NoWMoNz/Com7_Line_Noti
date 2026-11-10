@@ -17,7 +17,8 @@
 | กฎสถานะเอกสาร (ใช้ร่วมกันทุกหน้า) | ✅ `src/lib/docs/status.ts` |
 | LINE webhook (เมนู, รับไฟล์ผ่านแชท, ตรวจลายเซ็น) | ✅ `src/app/api/line/webhook` |
 | หน้าผู้สมัคร (LINE MINI App): ลงทะเบียน, PDPA, อัปโหลด, ดูสถานะ | ✅ `src/app/apply` + `src/app/api/apply` |
-| หน้าแอดมิน: Dashboard, ตรวจเอกสาร, แจ้งเริ่มงาน, สาขา, ผู้ใช้, ตั้งค่า | ⬜ |
+| หน้าแอดมิน ช่วง 1: login, รายชื่อ/ค้นหา, อนุมัติ, ตรวจเอกสาร + แจ้ง LINE, ข้อความถึงผู้สมัคร, ย้ายบัญชี LINE | ✅ `src/app/admin` + `src/app/api/admin` |
+| หน้าแอดมิน ช่วง 2: Dashboard, แจ้งเริ่มงาน, สาขา, ผู้ใช้/สิทธิ์, ตั้งค่าเอกสาร, ประวัติ | ⬜ |
 | แจ้งเตือนอัตโนมัติ (ใกล้ deadline, ติดตาม 3 วัน) ด้วย Vercel Cron | ⬜ |
 | ย้ายไฟล์จาก Google Drive เข้า Storage | ⬜ |
 
@@ -32,6 +33,9 @@ src/
   app/apply/                 หน้าผู้สมัคร (Endpoint URL ของ LINE MINI App)
   app/api/apply/             API ของหน้าผู้สมัคร (session, register, pdpa, status, upload)
   lib/apply/portal.ts        logic หน้าผู้สมัคร: ผูกบัญชี LINE, ลงทะเบียน, PDPA, อัปโหลด
+  app/admin/                 หน้าแอดมิน (login, ตั้งรหัสผ่าน, รายชื่อ + ตรวจเอกสาร)
+  app/api/admin/             API แอดมิน — ตรวจ session + สิทธิ์ใน admins ทุก request
+  lib/admin/                 logic แอดมิน (สถานะผู้สมัคร, ตรวจเอกสาร, ข้อความ LINE)
   lib/docs/status.ts         กฎ "ส่งครบ / ต้องแก้ / อนุมัติ" — ที่เดียวในระบบ
   lib/line/                  ลายเซ็น, client, Flex Message, logic การสนทนา
   lib/repo/                  การเข้าถึงข้อมูล (interface + Supabase)
@@ -39,6 +43,7 @@ src/
 scripts/
   gas/ExportForMigration.gs  วางในโปรเจกต์ Apps Script เดิมเพื่อ export ข้อมูล
   migrate-from-sheets.ts     นำเข้าข้อมูลสู่ Supabase
+  create-admin.ts            สร้างแอดมิน + พิมพ์ลิงก์ตั้งรหัสผ่าน
 tests/                       vitest (รวมการรัน migration จริงบน PGlite)
 ```
 
@@ -84,6 +89,19 @@ npm run dev
 2. SQL Editor → รันไฟล์ `supabase/migrations/0001_init.sql`
    (ถ้ายังไม่ย้ายข้อมูลจริง รัน `supabase/seed.sql` ต่อเพื่อได้ประเภทเอกสารตั้งต้น)
 3. Project Settings → API → คัดลอก URL และ Secret key ใส่ `.env.local`
+
+### บัญชีแอดมิน
+
+```bash
+npm run create-admin -- <email> [Developer|SuperAdmin|Admin2|Admin] [ชื่อที่แสดง]
+```
+
+สร้างบัญชี Supabase Auth + สิทธิ์ใน `admins` แล้วพิมพ์**ลิงก์ตั้งรหัสผ่าน (ใช้ครั้งเดียว)** ออกมา — ไม่ส่งอีเมล
+ส่งลิงก์ให้เจ้าของบัญชีเอง (ลิงก์ชี้ไป `ADMIN_BASE_URL` หรือ `http://localhost:3000`)
+
+ปุ่ม "ลืมรหัสผ่าน" ในหน้า login ส่งอีเมลผ่าน Supabase — ก่อนใช้จริงต้องตั้งใน Supabase Dashboard:
+- Authentication → URL Configuration: Site URL = โดเมนจริง และเพิ่ม `https://<โดเมน>/admin/reset-password` ใน Redirect URLs
+- Authentication → SMTP: อีเมลในตัวของ Supabase ส่งได้น้อยมาก (มีโควตาต่อชั่วโมง) ควรตั้ง SMTP ของบริษัท
 
 ### ตั้งค่า LINE
 

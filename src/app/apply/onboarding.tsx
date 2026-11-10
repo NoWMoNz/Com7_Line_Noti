@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useState } from 'react';
 import { PDPA_SECTIONS } from '@/lib/apply/pdpa';
-import { Button, ErrorText, Icon, StatusPanel } from './ui';
+import { Button, ErrorText, Icon, StatusPanel } from '@/components/ui';
 
 // ---------------------------------------------------------------------------
 // นโยบาย PDPA

@@ -14,6 +14,7 @@ export const serverEnv = {
   supabaseUrl: () => required('NEXT_PUBLIC_SUPABASE_URL'),
   /** secret key (sb_secret_...) หรือ service_role key แบบเดิม — ห้ามส่งไปฝั่ง browser */
   supabaseSecretKey: () => required('SUPABASE_SECRET_KEY'),
+  supabasePublishableKey: () => required('NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY'),
   lineChannelSecret: () => required('LINE_CHANNEL_SECRET'),
   lineChannelAccessToken: () => required('LINE_CHANNEL_ACCESS_TOKEN'),
   liffId: () => process.env.NEXT_PUBLIC_LIFF_ID?.trim() ?? '',

@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import type { DocItemView, SubitemView } from '@/lib/apply/types';
 import { compressImage } from './client-lib';
-import { Badge, Button, docBadge, ErrorText, Icon, StatusPanel } from './ui';
+import { Badge, Button, docBadge, ErrorText, Icon, StatusPanel } from '@/components/ui';
 
 const MAX_FILES = 10;
 const isPdf = (f: File) => f.type === 'application/pdf' || /\.pdf$/i.test(f.name);
