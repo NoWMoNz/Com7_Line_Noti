@@ -102,9 +102,28 @@ export interface ApplicantDetail {
   createdAt: string;
   lastUploadedAt: string | null;
   completedAt: string | null;
+  info: ApplicantInfo;
   satisfied: number;
   total: number;
   docs: AdminDocView[];
+}
+
+/** ข้อมูลทั่วไปของผู้สมัครที่ HR แก้ได้ */
+export interface ApplicantInfo {
+  branch: string;
+  notes: string;
+  /** กำหนดส่งเอกสาร (ISO) — ใช้แจ้งเตือนใกล้ครบกำหนด */
+  deadline: string | null;
+  ta: string;
+  intern: string;
+  company: string;
+  position: string;
+  startDate: string | null;
+}
+
+export interface ApplicantInfoInput extends Partial<ApplicantInfo> {
+  name?: string;
+  phone?: string;
 }
 
 export interface ReviewItemInput {

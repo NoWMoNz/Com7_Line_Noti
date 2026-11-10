@@ -21,6 +21,7 @@ export function ApplicantList({
   onFilter,
   onPage,
   onSelect,
+  onCreate,
 }: {
   q: string;
   filter: ApplicantListFilter;
@@ -32,12 +33,20 @@ export function ApplicantList({
   onFilter: (f: ApplicantListFilter) => void;
   onPage: (p: number) => void;
   onSelect: (id: string) => void;
+  onCreate: () => void;
 }) {
   const pages = result ? Math.max(1, Math.ceil(result.total / result.pageSize)) : 1;
 
   return (
     <section aria-label="รายชื่อผู้สมัคร" className="flex min-h-0 flex-col">
       <div className="space-y-3 border-b border-line p-4">
+        <button
+          type="button"
+          onClick={onCreate}
+          className="flex w-full items-center justify-center gap-1.5 rounded-lg border border-dashed border-line py-2 text-sm font-medium text-brand hover:border-brand hover:bg-brand-tint"
+        >
+          <Icon name="plus" className="size-4" /> เพิ่มผู้สมัคร
+        </button>
         <div className="relative">
           <Icon name="search" className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted" />
           <input

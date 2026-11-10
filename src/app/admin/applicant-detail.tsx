@@ -1,9 +1,10 @@
 'use client';
 
 import { useState } from 'react';
-import type { AdminDocView, ApplicantDetail, FileView, ReviewItemInput, ReviewView } from '@/lib/admin/types';
+import type { AdminDocView, ApplicantDetail, ApplicantInfoInput, FileView, ReviewItemInput, ReviewView } from '@/lib/admin/types';
 import { Badge, Button, docBadge, ErrorText, Icon } from '@/components/ui';
 import { fmtDateTime, fmtSize, STAGE } from './admin-lib';
+import { DeleteCard, InfoCard } from './applicant-info';
 
 /** เหตุผลที่ใช้บ่อย — กดแล้วเติมลงช่องเหตุผล */
 const QUICK_REASONS = ['ภาพไม่ชัด', 'เอกสารไม่ครบ', 'ยังไม่ได้เซ็นรับรองสำเนา', 'เอกสารหมดอายุ', 'ส่งผิดเอกสาร'];
@@ -14,6 +15,8 @@ export interface DetailActions {
   approve: (approved: boolean, notify: boolean) => Promise<string | null>;
   feedback: (text: string, sendLine: boolean) => Promise<string | null>;
   unlinkLine: () => Promise<string | null>;
+  saveInfo: (input: ApplicantInfoInput) => Promise<string | null>;
+  remove: (confirmCode: string) => Promise<string | null>;
 }
 
 export function ApplicantDetailPanel({ detail, actions }: { detail: ApplicantDetail; actions: DetailActions }) {
@@ -38,6 +41,7 @@ export function ApplicantDetailPanel({ detail, actions }: { detail: ApplicantDet
       </header>
 
       <ApprovalCard detail={detail} onApprove={actions.approve} />
+      <InfoCard detail={detail} onSave={actions.saveInfo} />
 
       {detail.approved && (
         <section aria-labelledby="docs-title" className="space-y-3">
@@ -61,6 +65,7 @@ export function ApplicantDetailPanel({ detail, actions }: { detail: ApplicantDet
 
       <FeedbackCard key={detail.id} initial={detail.feedback} lineLinked={detail.lineLinked} onSave={actions.feedback} />
       {detail.lineLinked && <UnlinkCard onUnlink={actions.unlinkLine} />}
+      <DeleteCard code={detail.code} onDelete={actions.remove} />
     </article>
   );
 }

@@ -1,7 +1,8 @@
 /** รายชื่อผู้สมัคร: ?q=ค้นหา&filter=all|pending_approval|approved&page=1 */
-import { adminRoute } from '@/lib/admin/http';
+import { createApplicantByAdmin } from '@/lib/admin/applicant-admin-service';
+import { adminRoute, readBody } from '@/lib/admin/http';
 import { listApplicants } from '@/lib/admin/service';
-import type { ApplicantListFilter } from '@/lib/admin/types';
+import type { ApplicantInfoInput, ApplicantListFilter } from '@/lib/admin/types';
 
 const FILTERS: ApplicantListFilter[] = ['all', 'pending_approval', 'approved'];
 
@@ -9,4 +10,10 @@ export async function GET(request: Request) {
   const p = new URL(request.url).searchParams;
   const filter = FILTERS.find((f) => f === p.get('filter')) ?? 'all';
   return adminRoute(() => listApplicants({ q: p.get('q') ?? '', filter, page: Number(p.get('page') ?? 1) }), 'applicants');
+}
+
+/** HR เพิ่มผู้สมัครเอง: { name, phone?, branch?, notes?, deadline?, ta?, intern?, company?, position?, startDate? } */
+export async function POST(request: Request) {
+  const body = await readBody(request);
+  return adminRoute((admin) => createApplicantByAdmin(admin, body as ApplicantInfoInput), 'applicants');
 }

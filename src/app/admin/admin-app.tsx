@@ -10,6 +10,7 @@ import type {
 import { Icon, Spinner } from '@/components/ui';
 import { adminFetch } from './admin-lib';
 import { ApplicantDetailPanel, type DetailActions } from './applicant-detail';
+import { ApplicantInfoForm } from './applicant-info';
 import { ApplicantList } from './applicant-list';
 
 /** id ผู้สมัครที่เลือก เก็บใน ?id= — รีเฟรช/ส่งลิงก์ให้เพื่อนร่วมทีมแล้วเปิดคนเดิมได้ */
@@ -39,6 +40,7 @@ export function AdminApp() {
   /** ผลโหลดรายละเอียดล่าสุด ผูกกับ id — ไม่ตรงกับ selectedId = กำลังโหลด */
   const [loaded, setLoaded] = useState<{ id: string; detail: ApplicantDetail | null; error: string | null } | null>(null);
   const listSeq = useRef(0);
+  const [creating, setCreating] = useState(false);
 
   // ---------- รายชื่อ (รอพิมพ์เสร็จ 300ms ก่อนค้นหา) ----------
   const loadList = useCallback(async (opts: { q: string; filter: ApplicantListFilter; page: number }) => {
@@ -74,6 +76,7 @@ export function AdminApp() {
   const detail = current?.detail ?? null;
 
   const select = (id: string | null) => {
+    setCreating(false);
     setSelectedId(id);
     writeSelected(id);
   };
@@ -96,12 +99,21 @@ export function AdminApp() {
     approve: (approved, notify) => mutate('approval', { approved, notify }),
     feedback: (text, sendLine) => mutate('feedback', { text, sendLine }),
     unlinkLine: () => mutate('unlink-line', {}),
+    saveInfo: (input) => mutate('info', input),
+    remove: async (confirmCode) => {
+      if (!selectedId) return 'ยังไม่ได้เลือกผู้สมัคร';
+      const r = await adminFetch<{ id: string }>(`applicants/${selectedId}/delete`, { method: 'POST', body: { confirmCode } });
+      if (!r.ok) return r.error;
+      select(null);
+      loadList({ q, filter, page });
+      return null;
+    },
   };
 
 
   return (
     <div className="grid min-h-0 flex-1 lg:grid-cols-[380px_1fr]">
-        <div className={`min-h-0 border-line lg:flex lg:border-r ${selectedId ? 'hidden' : 'flex'} flex-col`}>
+        <div className={`min-h-0 border-line lg:flex lg:border-r ${selectedId || creating ? 'hidden' : 'flex'} flex-col`}>
           <ApplicantList
             q={q}
             filter={filter}
@@ -119,11 +131,15 @@ export function AdminApp() {
             }}
             onPage={setPage}
             onSelect={select}
+            onCreate={() => {
+              select(null);
+              setCreating(true);
+            }}
           />
         </div>
 
-        <main className={`min-h-0 overflow-y-auto ${selectedId ? 'block' : 'hidden lg:block'}`}>
-          {selectedId && (
+        <main className={`min-h-0 overflow-y-auto ${selectedId || creating ? 'block' : 'hidden lg:block'}`}>
+          {(selectedId || creating) && (
             <button
               type="button"
               onClick={() => select(null)}
@@ -132,7 +148,27 @@ export function AdminApp() {
               <Icon name="chevronLeft" className="size-4" /> กลับไปรายชื่อ
             </button>
           )}
-          {!selectedId && (
+          {creating && !selectedId && (
+            <div className="mx-auto max-w-2xl space-y-3 p-4 lg:p-6">
+              <h2 className="text-xl font-bold">เพิ่มผู้สมัคร</h2>
+              <p className="text-sm text-muted">
+                ผู้สมัครที่เพิ่มเองจะได้รับการอนุมัติทันที — ให้ผู้สมัครเปิดเมนูลงทะเบียนใน LINE แล้วกรอกเบอร์โทรนี้ ระบบจะผูกบัญชีให้
+              </p>
+              <ApplicantInfoForm
+                submitLabel="เพิ่มผู้สมัคร"
+                onCancel={() => setCreating(false)}
+                onSubmit={async (input) => {
+                  const r = await adminFetch<ApplicantDetail>('applicants', { method: 'POST', body: input });
+                  if (!r.ok) return r.error;
+                  setLoaded({ id: r.data.id, detail: r.data, error: null });
+                  select(r.data.id);
+                  loadList({ q, filter, page });
+                  return null;
+                }}
+              />
+            </div>
+          )}
+          {!selectedId && !creating && (
             <div className="flex h-full items-center justify-center p-8 text-center text-muted">
               <p>เลือกผู้สมัครจากรายชื่อเพื่อดูข้อมูลและตรวจเอกสาร</p>
             </div>

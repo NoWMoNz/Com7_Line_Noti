@@ -38,7 +38,7 @@ export class AdminInputError extends Error {}
 
 const PAGE_SIZE = 50;
 const COLS =
-  'id, code, name, phone, approved, line_user_id, access_token, required_doc_keys, admin_feedback, onboard_notified_at, pdpa_version, pdpa_accepted_at, created_at, last_uploaded_at, completed_at';
+  'id, code, name, phone, approved, line_user_id, access_token, required_doc_keys, admin_feedback, onboard_notified_at, pdpa_version, pdpa_accepted_at, created_at, last_uploaded_at, completed_at, branch_label, notes, deadline, ta, intern, company, position, start_date';
 
 interface Row {
   id: string;
@@ -56,6 +56,14 @@ interface Row {
   created_at: string;
   last_uploaded_at: string | null;
   completed_at: string | null;
+  branch_label: string | null;
+  notes: string;
+  deadline: string | null;
+  ta: string | null;
+  intern: string | null;
+  company: string | null;
+  position: string | null;
+  start_date: string | null;
 }
 
 const toApplicant = (r: Row): Applicant => ({
@@ -302,6 +310,16 @@ export async function getApplicantDetail(id: string): Promise<ApplicantDetail> {
     createdAt: row.created_at,
     lastUploadedAt: row.last_uploaded_at,
     completedAt: row.completed_at,
+    info: {
+      branch: row.branch_label ?? '',
+      notes: row.notes ?? '',
+      deadline: row.deadline,
+      ta: row.ta ?? '',
+      intern: row.intern ?? '',
+      company: row.company ?? '',
+      position: row.position ?? '',
+      startDate: row.start_date,
+    },
     satisfied: summary.satisfiedCount,
     total: summary.total,
     docs,
