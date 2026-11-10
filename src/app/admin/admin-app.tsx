@@ -25,7 +25,11 @@ function writeSelected(id: string | null) {
 
 export function AdminApp() {
   const [q, setQ] = useState('');
-  const [filter, setFilter] = useState<ApplicantListFilter>('all');
+  // ?filter= จากลิงก์ในหน้าภาพรวม
+  const [filter, setFilter] = useState<ApplicantListFilter>(() => {
+    const f = new URLSearchParams(window.location.search).get('filter');
+    return f === 'pending_approval' || f === 'approved' ? f : 'all';
+  });
   const [page, setPage] = useState(1);
   const [list, setList] = useState<ApplicantListResult | null>(null);
   const [listLoading, setListLoading] = useState(true);
