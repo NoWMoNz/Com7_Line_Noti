@@ -20,6 +20,7 @@ export function useAdmin(): AdminProfile {
 const NAV: Array<{ section: AdminSection; href: string; label: string }> = [
   { section: 'applicants', href: '/admin', label: 'ผู้สมัคร' },
   { section: 'onboarding', href: '/admin/onboarding', label: 'แจ้งเริ่มงาน' },
+  { section: 'branches', href: '/admin/branches', label: 'สาขา' },
 ];
 
 /**
