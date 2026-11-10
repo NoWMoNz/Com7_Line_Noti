@@ -8,7 +8,9 @@ import type {
   ReviewItemInput,
 } from '@/lib/admin/types';
 import { Icon, Spinner } from '@/components/ui';
+import { canAccess } from '@/lib/admin/roles';
 import { adminFetch } from './admin-lib';
+import { useAdmin } from './shell';
 import { ApplicantDetailPanel, type DetailActions } from './applicant-detail';
 import { ApplicantInfoForm } from './applicant-info';
 import { ApplicantList } from './applicant-list';
@@ -25,6 +27,8 @@ function writeSelected(id: string | null) {
 }
 
 export function AdminApp() {
+  const me = useAdmin();
+  const canRemind = canAccess(me.role, 'reminders');
   const [q, setQ] = useState('');
   // ?filter= จากลิงก์ในหน้าภาพรวม
   const [filter, setFilter] = useState<ApplicantListFilter>(() => {
@@ -100,6 +104,13 @@ export function AdminApp() {
     feedback: (text, sendLine) => mutate('feedback', { text, sendLine }),
     unlinkLine: () => mutate('unlink-line', {}),
     saveInfo: (input) => mutate('info', input),
+    remind: canRemind
+      ? async () => {
+          if (!selectedId) return 'ยังไม่ได้เลือกผู้สมัคร';
+          const r = await adminFetch(`applicants/${selectedId}/remind`, { method: 'POST', body: {} });
+          return r.ok ? null : r.error;
+        }
+      : undefined,
     remove: async (confirmCode) => {
       if (!selectedId) return 'ยังไม่ได้เลือกผู้สมัคร';
       const r = await adminFetch<{ id: string }>(`applicants/${selectedId}/delete`, { method: 'POST', body: { confirmCode } });
@@ -131,6 +142,20 @@ export function AdminApp() {
             }}
             onPage={setPage}
             onSelect={select}
+            onRemindAll={
+              canRemind
+                ? async () => {
+                    if (!window.confirm('ส่ง LINE เตือนผู้สมัครทุกคนที่อนุมัติแล้วแต่ยังส่งเอกสารไม่ครบ?')) return;
+                    const r = await adminFetch<{ sent: number; total: number; failed: Array<{ name: string }> }>('reminders/all', { method: 'POST', body: {} });
+                    window.alert(
+                      r.ok
+                        ? `ส่งสำเร็จ ${r.data.sent}/${r.data.total} คน${r.data.failed.length ? `
+ไม่สำเร็จ: ${r.data.failed.map((f) => f.name).join(', ')}` : ''}`
+                        : r.error,
+                    );
+                  }
+                : undefined
+            }
             onCreate={() => {
               select(null);
               setCreating(true);

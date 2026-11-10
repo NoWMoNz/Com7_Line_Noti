@@ -22,6 +22,7 @@ export function ApplicantList({
   onPage,
   onSelect,
   onCreate,
+  onRemindAll,
 }: {
   q: string;
   filter: ApplicantListFilter;
@@ -34,6 +35,8 @@ export function ApplicantList({
   onPage: (p: number) => void;
   onSelect: (id: string) => void;
   onCreate: () => void;
+  /** มี = มีสิทธิ์เตือนทุกคนที่ยังส่งไม่ครบ */
+  onRemindAll?: () => void;
 }) {
   const pages = result ? Math.max(1, Math.ceil(result.total / result.pageSize)) : 1;
 
@@ -47,6 +50,11 @@ export function ApplicantList({
         >
           <Icon name="plus" className="size-4" /> เพิ่มผู้สมัคร
         </button>
+        {onRemindAll && (
+          <button type="button" onClick={onRemindAll} className="w-full text-center text-xs text-muted underline underline-offset-2 hover:text-foreground">
+            ส่ง LINE เตือนทุกคนที่ยังส่งเอกสารไม่ครบ
+          </button>
+        )}
         <div className="relative">
           <Icon name="search" className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted" />
           <input

@@ -17,6 +17,8 @@ export interface DetailActions {
   unlinkLine: () => Promise<string | null>;
   saveInfo: (input: ApplicantInfoInput) => Promise<string | null>;
   remove: (confirmCode: string) => Promise<string | null>;
+  /** มี = มีสิทธิ์ส่งเตือนเอกสารค้าง */
+  remind?: () => Promise<string | null>;
 }
 
 export function ApplicantDetailPanel({ detail, actions }: { detail: ApplicantDetail; actions: DetailActions }) {
@@ -54,6 +56,9 @@ export function ApplicantDetailPanel({ detail, actions }: { detail: ApplicantDet
               แจ้งผลการตรวจทาง LINE
             </label>
           </div>
+          {actions.remind && detail.lineLinked && !detail.onboardNotified && detail.stage !== 'complete' && (
+            <RemindButton onRemind={actions.remind} />
+          )}
           {detail.onboardNotified && (
             <p className="rounded-lg bg-brand-tint p-3 text-sm text-brand-strong">แจ้งเริ่มงานแล้ว — ผู้สมัครเห็นว่าเอกสารอนุมัติครบ</p>
           )}
@@ -441,5 +446,27 @@ function UnlinkCard({ onUnlink }: { onUnlink: DetailActions['unlinkLine'] }) {
         {busy ? 'กำลังดำเนินการ...' : 'ยกเลิกการผูก LINE'}
       </button>
     </Card>
+  );
+}
+
+function RemindButton({ onRemind }: { onRemind: () => Promise<string | null> }) {
+  const [state, setState] = useState<{ busy: boolean; msg: string | null; ok: boolean }>({ busy: false, msg: null, ok: false });
+  return (
+    <div className="flex flex-wrap items-center gap-3 rounded-lg bg-surface px-3 py-2 text-sm">
+      <span className="text-muted">ผู้สมัครยังส่งไม่ครบ?</span>
+      <button
+        type="button"
+        disabled={state.busy}
+        onClick={async () => {
+          setState({ busy: true, msg: null, ok: false });
+          const err = await onRemind();
+          setState({ busy: false, msg: err ?? 'ส่งเตือนทาง LINE แล้ว', ok: !err });
+        }}
+        className="font-semibold text-brand underline underline-offset-2 disabled:text-muted"
+      >
+        {state.busy ? 'กำลังส่ง...' : 'ส่ง LINE เตือนรายการที่ยังขาด'}
+      </button>
+      {state.msg && <span className={state.ok ? 'text-brand' : 'text-danger'}>{state.msg}</span>}
+    </div>
   );
 }

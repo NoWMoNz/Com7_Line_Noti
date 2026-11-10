@@ -5,17 +5,18 @@
  *  Developer   ทุกอย่าง
  *  SuperAdmin  ภาพรวม / ผู้สมัคร / แจ้งเริ่มงาน (แก้ไขหลังส่งได้) / สาขา / ผู้ใช้ / ตั้งค่า
  *  Admin2      ทุกหน้า ยกเว้น ผู้ใช้ / ตั้งค่า
- *  Admin       งานปฏิบัติการ: ผู้สมัคร / แจ้งเริ่มงาน (แก้ไขข้อมูลได้ แต่ส่งไม่ได้) / สาขา / เอกสาร
+ *  Admin       งานปฏิบัติการ: ผู้สมัคร / แจ้งเริ่มงาน (แก้ไขข้อมูลได้ แต่ส่งไม่ได้) / สาขา / เอกสาร / ส่งเตือนเอกสารค้าง
  */
 import type { AdminRole } from './types';
 
-export type AdminSection = 'overview' | 'applicants' | 'onboarding' | 'branches' | 'documents' | 'users' | 'settings';
+export type AdminSection = 'overview' | 'applicants' | 'onboarding' | 'branches' | 'documents' | 'users' | 'settings' | 'reminders';
 
 const SECTIONS: Record<AdminRole, AdminSection[]> = {
-  Developer: ['overview', 'applicants', 'onboarding', 'branches', 'documents', 'users', 'settings'],
+  Developer: ['overview', 'applicants', 'onboarding', 'branches', 'documents', 'users', 'settings', 'reminders'],
   SuperAdmin: ['overview', 'applicants', 'onboarding', 'branches', 'users', 'settings'],
   Admin2: ['overview', 'applicants', 'onboarding', 'branches', 'documents'],
-  Admin: ['applicants', 'onboarding', 'branches', 'documents'],
+  // reminders = ส่งเตือนเอกสารค้างทาง LINE (หน้า "แจ้งเตือน LINE" เดิม — Admin2/SuperAdmin ไม่มีสิทธิ์)
+  Admin: ['applicants', 'onboarding', 'branches', 'documents', 'reminders'],
 };
 
 export const canAccess = (role: AdminRole, section: AdminSection) => SECTIONS[role].includes(section);

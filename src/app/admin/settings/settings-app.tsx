@@ -16,6 +16,7 @@ export function SettingsApp() {
           <p className="text-sm text-muted">สถานะการเชื่อมต่อ ประวัติการแจ้งเตือน LINE และประวัติการแก้ไขข้อมูล</p>
         </div>
         <StatusSection />
+        <AutoRemindersSection />
         <NotificationsSection />
         <AuditSection />
       </div>
@@ -221,6 +222,43 @@ function AuditSection() {
           <Pager data={data} onPage={setPage} />
         </>
       )}
+    </section>
+  );
+}
+
+function AutoRemindersSection() {
+  const [v, setV] = useState<{ deadline: boolean; followup: boolean } | null>(null);
+  const [msg, setMsg] = useState<string | null>(null);
+  useEffect(() => {
+    adminFetch<{ deadline: boolean; followup: boolean }>('reminders/settings').then((r) => (r.ok ? setV(r.data) : setMsg(r.error)));
+  }, []);
+  async function toggle(key: 'deadline' | 'followup') {
+    if (!v) return;
+    const next = { ...v, [key]: !v[key] };
+    const r = await adminFetch<typeof next>('reminders/settings', { method: 'POST', body: next });
+    if (r.ok) {
+      setV(r.data);
+      setMsg('บันทึกแล้ว');
+    } else setMsg(r.error);
+  }
+  const item = (key: 'deadline' | 'followup', title: string, desc: string) => (
+    <label className="flex cursor-pointer items-start gap-3 px-4 py-3">
+      <input type="checkbox" checked={!!v?.[key]} disabled={!v} onChange={() => toggle(key)} className="mt-1 size-4 accent-brand" />
+      <span>
+        <span className="block text-sm font-medium">{title}</span>
+        <span className="block text-xs text-muted">{desc}</span>
+      </span>
+    </label>
+  );
+  return (
+    <section className="space-y-3">
+      <h2 className="font-semibold">แจ้งเตือนอัตโนมัติ (ทุกวัน 09:00)</h2>
+      <div className="divide-y divide-line rounded-xl border border-line">
+        {item('deadline', 'เตือนใกล้กำหนดส่ง', 'ผู้สมัครที่ยังส่งไม่ครบ และกำหนดส่งเหลือไม่ถึง 48 ชม. หรือเลยแล้ว — ไม่ส่งซ้ำภายใน 20 ชม.')}
+        {item('followup', 'ติดตามหลัง HR ตรวจ 3 วัน', 'HR ตรวจแล้ว 3 วัน ผู้สมัครยังไม่ส่งไฟล์เพิ่ม — ส่งครั้งเดียวต่อรอบการตรวจ')}
+      </div>
+      {msg && <p className="text-sm text-muted">{msg}</p>}
+      <p className="text-xs text-muted">ทำงานผ่าน Vercel Cron — ต้องตั้ง CRON_SECRET บน Vercel ก่อน (บนเครื่อง dev จะไม่รันเอง)</p>
     </section>
   );
 }
