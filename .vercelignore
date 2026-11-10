@@ -1,0 +1,8 @@
+# ห้ามอัปโหลดไฟล์ลับ / ข้อมูลส่วนบุคคล / ของที่ build ใหม่ได้
+.env*
+!.env.example
+*export*.json
+node_modules
+.next
+coverage
+.impeccable

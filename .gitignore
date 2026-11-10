@@ -45,3 +45,6 @@ next-env.d.ts
 
 # ไฟล์ export จาก Google Sheets มีข้อมูลส่วนบุคคล ห้าม commit
 *export*.json
+
+.vercel
+.env*
