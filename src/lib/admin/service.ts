@@ -5,7 +5,7 @@ import 'server-only';
  */
 import type { SupabaseClient } from '@supabase/supabase-js';
 import { requiredDocsFor, summarizeApplicantDocs } from '@/lib/docs/status';
-import type { Applicant, DocReview, FileSlotRef, ReviewStatus } from '@/lib/docs/types';
+import type { Applicant, DocReview, DocType, FileSlotRef, ReviewStatus } from '@/lib/docs/types';
 import { serverEnv } from '@/lib/env';
 import { createLineClient } from '@/lib/line/client';
 import { DEFAULT_LOGO_URL } from '@/lib/line/flex';
@@ -155,8 +155,63 @@ async function pushAndLog(row: Row, type: string, preview: string, messages: Lin
 // ---------------------------------------------------------------------------
 // รายชื่อ
 
+/**
+ * ผู้สมัครที่อนุมัติเอกสารครบทุกรายการแล้ว แต่ยังไม่แจ้งเริ่มงาน — คนกลุ่มนี้ไปอยู่หน้าแจ้งเริ่มงาน
+ * คัดก่อนด้วย completed_at (ส่งครบ) แล้วค่อยตรวจ "อนุมัติครบ" ด้วยกฎกลาง (เหมือน listOnboarding)
+ */
+async function fullyApprovedIds(allDocs: DocType[]): Promise<string[]> {
+  const rows = ok(
+    await db()
+      .from('applicants')
+      .select('id, required_doc_keys')
+      .eq('approved', true)
+      .is('onboard_notified_at', null)
+      .not('completed_at', 'is', null)
+      .limit(1000),
+    'fully approved candidates',
+  ) as Array<{ id: string; required_doc_keys: string[] | null }>;
+  if (rows.length === 0) return [];
+  const ids = rows.map((r) => r.id);
+  const [files, reviews] = await Promise.all([
+    selectForApplicants<{ applicant_id: string; doc_key: string; subitem_title: string }>(
+      db(),
+      'applicant_files',
+      'applicant_id, doc_key, subitem_title',
+      ids,
+      { currentOnly: true },
+    ),
+    selectForApplicants<ReviewRow>(db(), 'doc_reviews', 'applicant_id, doc_key, subitem_title, status, reason, reviewed_by, updated_at', ids),
+  ]);
+  return rows
+    .filter(
+      (r) =>
+        summarizeApplicantDocs(
+          requiredDocsFor(r.required_doc_keys, allDocs),
+          files.filter((f) => f.applicant_id === r.id).map((f) => ({ docKey: f.doc_key, subitemTitle: f.subitem_title })),
+          reviews.filter((x) => x.applicant_id === r.id).map(toReview),
+        ).complete,
+    )
+    .map((r) => r.id);
+}
+
 export async function listApplicants(opts: { q: string; filter: ApplicantListFilter; page: number }): Promise<ApplicantListResult> {
   const page = Math.max(1, Math.floor(opts.page) || 1);
+  // ตัดอักขระที่มีความหมายในไวยากรณ์ filter ของ PostgREST ออก
+  const q = opts.q.replace(/[,()*%\\:]/g, ' ').trim().slice(0, 60);
+
+  // อนุมัติเอกสารครบ / แจ้งเริ่มงานแล้ว → ย้ายไปหน้าแจ้งเริ่มงาน ไม่ปนกับคนที่ยังต้องตรวจ
+  // (พิมพ์ค้นหายังเจอทุกคน เผื่อต้องเปิดดูเอกสารย้อนหลัง)
+  const hideDone = !q && opts.filter !== 'pending_approval';
+  const allDocs = await docTypes();
+  const [doneIds, onboarded] = hideDone
+    ? await Promise.all([
+        fullyApprovedIds(allDocs),
+        db().from('applicants').select('id', { count: 'exact', head: true }).not('onboard_notified_at', 'is', null),
+      ])
+    : [[], null];
+  if (onboarded?.error) throw new Error(`onboarded count: ${onboarded.error.message}`);
+  const movedToOnboarding = doneIds.length + (onboarded?.count ?? 0);
+
   let query = db()
     .from('applicants')
     .select(COLS, { count: 'exact' })
@@ -166,8 +221,10 @@ export async function listApplicants(opts: { q: string; filter: ApplicantListFil
 
   if (opts.filter === 'pending_approval') query = query.eq('approved', false);
   if (opts.filter === 'approved') query = query.eq('approved', true);
-  // ตัดอักขระที่มีความหมายในไวยากรณ์ filter ของ PostgREST ออก
-  const q = opts.q.replace(/[,()*%\\:]/g, ' ').trim().slice(0, 60);
+  if (hideDone) {
+    query = query.is('onboard_notified_at', null);
+    if (doneIds.length) query = query.not('id', 'in', `(${doneIds.join(',')})`);
+  }
   if (q) {
     const digits = q.replace(/\D/g, '');
     const parts = [`name.ilike.*${q}*`, `code.ilike.*${q}*`];
@@ -178,8 +235,7 @@ export async function listApplicants(opts: { q: string; filter: ApplicantListFil
   const res = await query;
   const rows = ok(res, 'list applicants') as Row[];
   const ids = rows.map((r) => r.id);
-  const [allDocs, files, reviews] = await Promise.all([
-    docTypes(),
+  const [files, reviews] = await Promise.all([
     selectForApplicants<{ applicant_id: string; doc_key: string; subitem_title: string }>(
       db(),
       'applicant_files',
@@ -213,7 +269,7 @@ export async function listApplicants(opts: { q: string; filter: ApplicantListFil
       lastUploadedAt: r.last_uploaded_at,
     };
   });
-  return { items, total: res.count ?? items.length, page, pageSize: PAGE_SIZE };
+  return { items, total: res.count ?? items.length, page, pageSize: PAGE_SIZE, movedToOnboarding };
 }
 
 // ---------------------------------------------------------------------------

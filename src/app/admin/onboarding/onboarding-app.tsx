@@ -1,5 +1,6 @@
 'use client';
 
+import Link from 'next/link';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   fillTemplate,
@@ -207,6 +208,9 @@ function OnboardingRow({
           </div>
         </button>
         <div className="flex items-center gap-2">
+          <Link href={`/admin?id=${item.id}`} className="rounded-lg px-3 py-1.5 text-sm text-muted hover:bg-surface">
+            เอกสาร
+          </Link>
           <button type="button" onClick={onToggle} className="rounded-lg px-3 py-1.5 text-sm text-muted hover:bg-surface">
             {open ? 'ปิด' : canEdit ? 'แก้ไข' : 'ดู'}
           </button>

@@ -46,6 +46,8 @@ export interface ApplicantListResult {
   total: number;
   page: number;
   pageSize: number;
+  /** อนุมัติเอกสารครบ/แจ้งเริ่มงานแล้ว ที่ซ่อนจากรายชื่อนี้ (อยู่หน้าแจ้งเริ่มงาน) — 0 เมื่อค้นหา */
+  movedToOnboarding: number;
 }
 
 export interface FileView {

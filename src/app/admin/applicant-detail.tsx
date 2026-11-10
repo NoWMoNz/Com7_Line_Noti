@@ -1,5 +1,6 @@
 'use client';
 
+import Link from 'next/link';
 import { useState } from 'react';
 import type { ApplicantDetail, ApplicantInfoInput, ReviewItemInput } from '@/lib/admin/types';
 import { Badge, Button, ErrorText, Icon } from '@/components/ui';
@@ -57,7 +58,20 @@ export function ApplicantDetailPanel({
             <RemindButton onRemind={actions.remind} />
           )}
           {detail.onboardNotified && (
-            <p className="rounded-lg bg-brand-tint p-3 text-sm text-brand-strong">แจ้งเริ่มงานแล้ว — ผู้สมัครเห็นว่าเอกสารอนุมัติครบ</p>
+            <p className="rounded-lg bg-brand-tint p-3 text-sm text-brand-strong">
+              แจ้งเริ่มงานแล้ว — ผู้สมัครเห็นว่าเอกสารอนุมัติครบ ·{' '}
+              <Link href="/admin/onboarding" className="font-medium underline underline-offset-2">
+                ดูที่หน้าแจ้งเริ่มงาน
+              </Link>
+            </p>
+          )}
+          {!detail.onboardNotified && detail.stage === 'complete' && (
+            <p className="rounded-lg bg-brand-tint p-3 text-sm text-brand-strong">
+              อนุมัติเอกสารครบแล้ว — ย้ายไปรอที่หน้าแจ้งเริ่มงาน ·{' '}
+              <Link href="/admin/onboarding" className="font-medium underline underline-offset-2">
+                ไปแจ้งเริ่มงาน
+              </Link>
+            </p>
           )}
           <DocsReview detail={detail} onSave={actions.review} onDirtyChange={onDirtyChange} />
         </div>

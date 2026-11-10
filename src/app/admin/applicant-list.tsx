@@ -1,5 +1,6 @@
 'use client';
 
+import Link from 'next/link';
 import type { ApplicantListFilter, ApplicantListResult } from '@/lib/admin/types';
 import { Badge, Icon, Spinner } from '@/components/ui';
 import { fmtRelative, STAGE } from './admin-lib';
@@ -91,6 +92,15 @@ export function ApplicantList({
           <p className="flex items-center gap-2 p-4 text-sm text-muted" role="status">
             <Spinner className="size-4" /> กำลังโหลด...
           </p>
+        )}
+        {result && result.movedToOnboarding > 0 && (
+          <Link
+            href="/admin/onboarding"
+            className="flex items-center justify-between gap-2 border-b border-line bg-surface px-4 py-2 text-xs text-muted hover:text-foreground"
+          >
+            <span>อนุมัติเอกสารครบแล้ว {result.movedToOnboarding.toLocaleString('th-TH')} คน ย้ายไปอยู่หน้าแจ้งเริ่มงาน</span>
+            <span className="shrink-0 font-medium text-brand">ไปที่หน้า →</span>
+          </Link>
         )}
         {result && result.items.length === 0 && <p className="p-6 text-center text-sm text-muted">ไม่พบผู้สมัคร</p>}
         <ul className={`divide-y divide-line ${loading ? 'opacity-60' : ''}`}>
