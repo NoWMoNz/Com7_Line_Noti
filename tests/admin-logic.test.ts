@@ -10,6 +10,7 @@ import {
 } from '@/lib/admin/logic';
 import { summarizeApplicantDocs } from '@/lib/docs/status';
 import type { DocReview } from '@/lib/docs/types';
+import type { ReviewItemInput } from '@/lib/admin/types';
 import { DOCS } from './fixtures';
 import { makeApplicant } from './memory';
 
@@ -98,28 +99,27 @@ describe('completionChange', () => {
 });
 
 describe('buildReviewMessages', () => {
-  it('ไม่ผ่านหลายรายการ → ข้อความเดียว มีรายการ + เหตุผลแต่ละข้อ + ปุ่มเปิดเมนูแนบไฟล์', () => {
-    const msgs = buildReviewMessages(
-      'สมชาย',
-      [
-        { docKey: 'doc1_application_set', subitemTitle: 'ใบสมัครหน้าที่ 2', status: 'rejected', reason: 'ภาพไม่ชัด' },
-        { docKey: 'doc9_health_receipt', subitemTitle: '', status: 'rejected', reason: 'ส่งผิดเอกสาร' },
-        { docKey: 'doc11_guarantor_copy', subitemTitle: '', status: 'approved', reason: '' },
-      ],
-      DOCS,
-      null,
-    );
-    expect(msgs.map((m) => m.type)).toEqual(['rejected', 'approved']);
-    const rejected = JSON.stringify(msgs[0].bubble);
-    expect(rejected).toContain('ใบสมัคร - ใบสมัครหน้าที่ 2: ภาพไม่ชัด');
-    expect(rejected).toContain('ใบเสร็จตรวจสุขภาพ: ส่งผิดเอกสาร');
-    expect(rejected).toContain('"type":"postback"');
-    expect(rejected).toContain('action=open_menu');
-    expect(JSON.stringify(msgs[1].bubble)).toContain('สำเนาเอกสารคนค้ำ');
+  const linkFor = (doc?: string) => `https://miniapp.line.me/L${doc ? `?doc=${doc}` : ''}`;
+  const build = (items: ReviewItemInput[], becameComplete = false) =>
+    buildReviewMessages({ applicantName: 'สมชาย', items, allDocs: DOCS, becameComplete, linkFor, logoUrl: null });
+
+  it('ไม่ผ่านหลายรายการ → ข้อความเดียว มีเหตุผลแต่ละข้อ + ปุ่มเปิดเอกสารแรกที่ต้องแก้', () => {
+    const msgs = build([
+      { docKey: 'doc1_application_set', subitemTitle: 'ใบสมัครหน้าที่ 2', status: 'rejected', reason: 'ภาพไม่ชัด' },
+      { docKey: 'doc9_health_receipt', subitemTitle: '', status: 'rejected', reason: 'ส่งผิดเอกสาร' },
+      { docKey: 'doc11_guarantor_copy', subitemTitle: '', status: 'approved', reason: '' },
+    ]);
+    expect(msgs.map((m) => m.type)).toEqual(['rejected']);
+    const s = JSON.stringify(msgs[0].bubble);
+    expect(s).toContain('ใบสมัคร - ใบสมัครหน้าที่ 2: ภาพไม่ชัด');
+    expect(s).toContain('ใบเสร็จตรวจสุขภาพ: ส่งผิดเอกสาร');
+    expect(s).toContain('https://miniapp.line.me/L?doc=doc1_application_set');
   });
 
-  it('ไม่มีอะไรต้องแจ้ง (รอตรวจ) → ไม่ส่ง', () => {
-    expect(buildReviewMessages('ก', [{ docKey: 'doc9_health_receipt', subitemTitle: '', status: 'pending_review', reason: '' }], DOCS, null)).toEqual([]);
+  it('ผ่านบางรายการ → ไม่ส่งข้อความ / ผ่านจนครบครั้งแรก → แจ้งครบ 1 ข้อความ', () => {
+    const approved: ReviewItemInput[] = [{ docKey: 'doc9_health_receipt', subitemTitle: '', status: 'approved', reason: '' }];
+    expect(build(approved)).toEqual([]);
+    expect(build(approved, true).map((m) => m.type)).toEqual(['all_approved']);
   });
 
   it('stripDocNumber', () => {

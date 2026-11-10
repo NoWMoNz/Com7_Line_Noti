@@ -15,7 +15,7 @@ type Draft = {
   enabled: boolean;
   optional: boolean;
   coversAll: boolean;
-  subitems: Array<{ id: number; title: string; optional: boolean; previousTitle: string | null; fileCount: number }>;
+  subitems: Array<{ id: number; title: string; optional: boolean; kind: 'file' | 'check'; previousTitle: string | null; fileCount: number }>;
 };
 
 let seq = 0;
@@ -26,7 +26,7 @@ const toDraft = (d?: DocTypeSetting): Draft => ({
   enabled: d?.enabled ?? true,
   optional: d?.optional ?? false,
   coversAll: d?.coversAll ?? false,
-  subitems: (d?.subitems ?? []).map((s) => ({ id: ++seq, title: s.title, optional: s.optional, previousTitle: s.title, fileCount: s.fileCount })),
+  subitems: (d?.subitems ?? []).map((s) => ({ id: ++seq, title: s.title, optional: s.optional, kind: s.kind, previousTitle: s.title, fileCount: s.fileCount })),
 });
 
 export function DocumentsApp() {
@@ -121,9 +121,9 @@ export function DocumentsApp() {
                   {d.subitems.length > 0 && (
                     <ul className="mt-2 flex flex-wrap gap-1.5">
                       {d.subitems.map((s) => (
-                        <li key={s.title} className="rounded-full bg-surface px-2.5 py-0.5 text-xs">
-                          {s.title}
-                          {s.optional && ' (ถ้ามี)'}
+                        <li key={s.title} className={`rounded-full px-2.5 py-0.5 text-xs ${s.kind === 'check' ? 'border border-dashed border-line text-muted' : 'bg-surface'}`}>
+                          {s.kind === 'check' ? `✓ ${s.title}` : s.title}
+                          {s.optional && s.kind === 'file' && ' (ถ้ามี)'}
                         </li>
                       ))}
                     </ul>
@@ -177,7 +177,7 @@ const toDraftPayload = (d: Draft) => ({
   description: d.description,
   enabled: d.enabled,
   optional: d.optional,
-  subitems: d.subitems.map((s) => ({ title: s.title, optional: s.optional, previousTitle: s.previousTitle })),
+  subitems: d.subitems.map((s) => ({ title: s.title, optional: s.optional, kind: s.kind, previousTitle: s.previousTitle })),
 });
 
 function DocForm({ draft, onCancel, onSaved }: { draft: Draft; onCancel: () => void; onSaved: (list: DocTypeSetting[]) => void }) {
@@ -235,7 +235,11 @@ function DocForm({ draft, onCancel, onSaved }: { draft: Draft; onCancel: () => v
 
       {!d.coversAll && (
         <fieldset className="space-y-2">
-          <legend className="text-sm font-medium">หัวข้อย่อย (แต่ละหัวข้อ = ช่องแนบ 1 ไฟล์ เช่น หน้าที่ 1, 2, 3)</legend>
+          <legend className="text-sm font-medium">หัวข้อย่อย</legend>
+          <p className="text-xs text-muted">
+            <b>ช่องอัปโหลด</b> = ผู้สมัครแนบไฟล์แยกช่องละ 1 ไฟล์ (เช่น หน้าที่ 1, 2, 3) · <b>HR ตรวจ</b> = จุดที่ HR เช็คในไฟล์ (เช่น เซ็นรับรอง)
+            ผู้สมัครไม่ต้องอัปโหลดแยก แต่จะเห็นเป็นข้อแนะนำก่อนส่ง
+          </p>
           {d.subitems.length === 0 && <p className="text-sm text-muted">ไม่มีหัวข้อย่อย — ผู้สมัครแนบไฟล์ของเอกสารนี้ได้หลายไฟล์ในช่องเดียว</p>}
           {d.subitems.map((s, i) => (
             <div key={s.id} className="flex flex-wrap items-center gap-2">
@@ -253,10 +257,21 @@ function DocForm({ draft, onCancel, onSaved }: { draft: Draft; onCancel: () => v
                 aria-label={`ชื่อหัวข้อย่อยที่ ${i + 1}`}
                 className={`${INPUT} min-w-48 flex-1`}
               />
-              <label className="flex items-center gap-1.5 text-sm">
-                <input type="checkbox" checked={s.optional} onChange={(e) => setSub(s.id, { optional: e.target.checked })} className="size-4 accent-brand" />
-                ถ้ามี
-              </label>
+              <select
+                value={s.kind}
+                onChange={(e) => setSub(s.id, { kind: e.target.value as 'file' | 'check' })}
+                aria-label={`ชนิดของหัวข้อ ${s.title}`}
+                className="h-10 rounded-lg border border-line bg-background px-2 text-sm"
+              >
+                <option value="file">ช่องอัปโหลด</option>
+                <option value="check">HR ตรวจ</option>
+              </select>
+              {s.kind === 'file' && (
+                <label className="flex items-center gap-1.5 text-sm">
+                  <input type="checkbox" checked={s.optional} onChange={(e) => setSub(s.id, { optional: e.target.checked })} className="size-4 accent-brand" />
+                  ถ้ามี
+                </label>
+              )}
               {s.fileCount > 0 && <span className="text-xs text-muted">{s.fileCount} ไฟล์</span>}
               <button type="button" onClick={() => removeSub(s.id)} aria-label={`ลบหัวข้อ ${s.title}`} className="grid size-8 place-items-center rounded text-danger hover:bg-danger-tint">
                 <Icon name="x" className="size-4" />
@@ -265,7 +280,7 @@ function DocForm({ draft, onCancel, onSaved }: { draft: Draft; onCancel: () => v
           ))}
           <button
             type="button"
-            onClick={() => setD({ ...d, subitems: [...d.subitems, { id: ++seq, title: '', optional: false, previousTitle: null, fileCount: 0 }] })}
+            onClick={() => setD({ ...d, subitems: [...d.subitems, { id: ++seq, title: '', optional: false, kind: 'file', previousTitle: null, fileCount: 0 }] })}
             className="flex items-center gap-1 text-sm font-medium text-brand"
           >
             <Icon name="plus" className="size-4" /> เพิ่มหัวข้อย่อย

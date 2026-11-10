@@ -25,6 +25,8 @@ export function ApplyApp({ liffId }: { liffId: string }) {
   const [toast, setToast] = useState<string | null>(null);
   const [liff, setLiff] = useState<LiffInfo>({ inClient: false, idToken: null });
   const started = useRef(false);
+  /** ?doc= จากการ์ด LINE (เช่น เอกสารที่ต้องแก้) — เปิดเอกสารนั้นครั้งเดียวหลังโหลดเสร็จ */
+  const deepLinkDoc = useRef<string | null>(null);
 
   const showToast = useCallback((msg: string) => {
     setToast(msg);
@@ -62,6 +64,7 @@ export function ApplyApp({ liffId }: { liffId: string }) {
       }
       const res = await callApi('session', { token: readTokenFromUrl(), idToken: info.idToken });
       const err = apply(res);
+      deepLinkDoc.current = new URLSearchParams(window.location.search).get('doc');
       setBoot(err ? { phase: 'error', message: err } : { phase: 'ready' });
     })();
   }, [liffId, apply]);
@@ -90,6 +93,13 @@ export function ApplyApp({ liffId }: { liffId: string }) {
     },
     [state, push],
   );
+
+  useEffect(() => {
+    const key = deepLinkDoc.current;
+    if (!key || boot.phase !== 'ready' || state?.screen !== 'docs') return;
+    deepLinkDoc.current = null;
+    openTarget({ docKey: key });
+  }, [boot.phase, state?.screen, openTarget]);
 
   // ---------- คำสั่งต่างๆ ----------
   const token = state?.token ?? null;

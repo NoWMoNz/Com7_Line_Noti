@@ -85,6 +85,8 @@ export interface AdminDocView {
   /** ไฟล์ของเอกสารทั้งชิ้น (ไม่ใช่หัวข้อย่อย) */
   files: FileView[];
   subitems: AdminSubitemView[];
+  /** จุดที่ HR ต้องตรวจในไฟล์ (checklist) */
+  checks: string[];
 }
 
 export interface ApplicantDetail {

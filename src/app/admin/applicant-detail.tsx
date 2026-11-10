@@ -1,13 +1,11 @@
 'use client';
 
 import { useState } from 'react';
-import type { AdminDocView, ApplicantDetail, ApplicantInfoInput, FileView, ReviewItemInput, ReviewView } from '@/lib/admin/types';
-import { Badge, Button, docBadge, ErrorText, Icon } from '@/components/ui';
-import { fmtDateTime, fmtSize, STAGE } from './admin-lib';
+import type { ApplicantDetail, ApplicantInfoInput, ReviewItemInput } from '@/lib/admin/types';
+import { Badge, Button, ErrorText, Icon } from '@/components/ui';
+import { fmtDateTime, STAGE } from './admin-lib';
 import { DeleteCard, InfoCard } from './applicant-info';
-
-/** เหตุผลที่ใช้บ่อย — กดแล้วเติมลงช่องเหตุผล */
-const QUICK_REASONS = ['ภาพไม่ชัด', 'เอกสารไม่ครบ', 'ยังไม่ได้เซ็นรับรองสำเนา', 'เอกสารหมดอายุ', 'ส่งผิดเอกสาร'];
+import { DocsReview } from './doc-review';
 
 export interface DetailActions {
   /** คืนข้อความผิดพลาด หรือ null */
@@ -21,9 +19,17 @@ export interface DetailActions {
   remind?: () => Promise<string | null>;
 }
 
-export function ApplicantDetailPanel({ detail, actions }: { detail: ApplicantDetail; actions: DetailActions }) {
+export function ApplicantDetailPanel({
+  detail,
+  actions,
+  onDirtyChange,
+}: {
+  detail: ApplicantDetail;
+  actions: DetailActions;
+  /** มีผลตรวจที่ยังไม่บันทึก */
+  onDirtyChange: (dirty: boolean) => void;
+}) {
   const stage = STAGE[detail.stage];
-  const [notify, setNotify] = useState(true);
 
   return (
     <article className="space-y-6 p-4 lg:p-6">
@@ -46,26 +52,15 @@ export function ApplicantDetailPanel({ detail, actions }: { detail: ApplicantDet
       <InfoCard detail={detail} onSave={actions.saveInfo} />
 
       {detail.approved && (
-        <section aria-labelledby="docs-title" className="space-y-3">
-          <div className="flex flex-wrap items-center justify-between gap-2">
-            <h3 id="docs-title" className="font-semibold">
-              เอกสาร <span className="font-normal text-muted">ส่งแล้ว {detail.satisfied}/{detail.total} รายการ</span>
-            </h3>
-            <label className="flex cursor-pointer items-center gap-2 text-sm">
-              <input type="checkbox" checked={notify} onChange={(e) => setNotify(e.target.checked)} className="size-4 accent-brand" />
-              แจ้งผลการตรวจทาง LINE
-            </label>
-          </div>
+        <div className="space-y-3">
           {actions.remind && detail.lineLinked && !detail.onboardNotified && detail.stage !== 'complete' && (
             <RemindButton onRemind={actions.remind} />
           )}
           {detail.onboardNotified && (
             <p className="rounded-lg bg-brand-tint p-3 text-sm text-brand-strong">แจ้งเริ่มงานแล้ว — ผู้สมัครเห็นว่าเอกสารอนุมัติครบ</p>
           )}
-          {detail.docs.map((d) => (
-            <DocCard key={d.key} doc={d} onReview={(items) => actions.review(items, notify)} />
-          ))}
-        </section>
+          <DocsReview detail={detail} onSave={actions.review} onDirtyChange={onDirtyChange} />
+        </div>
       )}
 
       <FeedbackCard key={detail.id} initial={detail.feedback} lineLinked={detail.lineLinked} onSave={actions.feedback} />
@@ -129,233 +124,6 @@ function ApprovalCard({ detail, onApprove }: { detail: ApplicantDetail; onApprov
         อนุมัติให้ส่งเอกสาร
       </Button>
     </Card>
-  );
-}
-
-// ---------------------------------------------------------------------------
-// เอกสาร
-
-function ReviewMeta({ review }: { review: ReviewView | null }) {
-  if (!review || !review.reviewedBy) return null;
-  return (
-    <p className="text-xs text-muted">
-      ตรวจโดย {review.reviewedBy} · {fmtDateTime(review.updatedAt)}
-    </p>
-  );
-}
-
-function DocCard({ doc, onReview }: { doc: AdminDocView; onReview: (items: ReviewItemInput[]) => Promise<string | null> }) {
-  const badge = docBadge(doc.state, 0, 0);
-  const hasSubs = doc.subitems.length > 0;
-  const anyFile = doc.files.length > 0 || doc.subitems.some((s) => s.files.length > 0);
-  const tag = doc.coversAll ? 'ไฟล์รวม' : doc.optional ? 'ไม่บังคับ' : null;
-
-  return (
-    <div className={`rounded-xl border p-4 ${doc.state === 'rejected' ? 'border-danger/40' : 'border-line'}`}>
-      <div className="flex flex-wrap items-start justify-between gap-2">
-        <div className="min-w-0">
-          <p className="font-medium">
-            {doc.label}
-            {tag && <span className="ml-2 text-xs font-normal text-muted">({tag})</span>}
-          </p>
-          {doc.reason && doc.state === 'rejected' && <p className="mt-0.5 text-sm text-danger">เหตุผล: {doc.reason}</p>}
-          <ReviewMeta review={doc.review} />
-        </div>
-        <Badge tone={badge.tone}>{hasSubs && doc.state === 'partial' ? 'ส่งไม่ครบ' : badge.label}</Badge>
-      </div>
-
-      {hasSubs ? (
-        <div className="mt-3 space-y-3">
-          {doc.subitems.map((s) => {
-            const sb = docBadge(s.state);
-            return (
-              <div key={s.title} className="rounded-lg bg-surface p-3">
-                <div className="flex flex-wrap items-center justify-between gap-2">
-                  <p className="text-sm font-medium">
-                    {s.title}
-                    {s.optional && <span className="ml-1 font-normal text-muted">(ถ้ามี)</span>}
-                  </p>
-                  <Badge tone={sb.tone}>{sb.label}</Badge>
-                </div>
-                {s.review?.status === 'rejected' && s.review.reason && <p className="mt-1 text-sm text-danger">เหตุผล: {s.review.reason}</p>}
-                <FileStrip files={s.files} />
-                {s.files.length > 0 && (
-                  <ReviewControls
-                    current={s.state}
-                    onReview={(status, reason) => onReview([{ docKey: doc.key, subitemTitle: s.title, status, reason }])}
-                  />
-                )}
-              </div>
-            );
-          })}
-          {anyFile && doc.state !== 'approved' && (
-            <ApproveAllButton onClick={() => onReview([{ docKey: doc.key, subitemTitle: '', status: 'approved', reason: '' }])} />
-          )}
-        </div>
-      ) : (
-        <>
-          <FileStrip files={doc.files} />
-          {doc.files.length > 0 ? (
-            <ReviewControls
-              current={doc.state}
-              onReview={(status, reason) => onReview([{ docKey: doc.key, subitemTitle: '', status, reason }])}
-            />
-          ) : (
-            <p className="mt-2 text-sm text-muted">ยังไม่มีไฟล์</p>
-          )}
-        </>
-      )}
-    </div>
-  );
-}
-
-function ApproveAllButton({ onClick }: { onClick: () => Promise<string | null> }) {
-  const [busy, setBusy] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  return (
-    <div className="space-y-2">
-      <button
-        type="button"
-        disabled={busy}
-        onClick={async () => {
-          setBusy(true);
-          setError(await onClick());
-          setBusy(false);
-        }}
-        className="text-sm font-semibold text-brand underline underline-offset-2 disabled:text-muted"
-      >
-        {busy ? 'กำลังบันทึก...' : 'ผ่านทั้งเอกสาร (ทุกหัวข้อ)'}
-      </button>
-      <ErrorText>{error}</ErrorText>
-    </div>
-  );
-}
-
-function FileStrip({ files }: { files: FileView[] }) {
-  if (files.length === 0) return null;
-  return (
-    <ul className="mt-3 flex flex-wrap gap-2">
-      {files.map((f, i) => {
-        const href = `/api/admin/files/${f.id}`;
-        const isImage = !!f.mimeType?.startsWith('image/');
-        return (
-          <li key={f.id}>
-            <a
-              href={href}
-              target="_blank"
-              rel="noreferrer"
-              title={`${f.mimeType ?? 'ไฟล์'} ${fmtSize(f.sizeBytes)} · ${fmtDateTime(f.createdAt)}${f.source === 'line' ? ' · ส่งผ่านแชท' : ''}`}
-              className="group relative block size-20 overflow-hidden rounded-lg border border-line bg-background"
-            >
-              {isImage && !f.legacy ? (
-                // eslint-disable-next-line @next/next/no-img-element -- ลิงก์ชั่วคราวที่ server สร้างใหม่ทุกครั้ง
-                <img src={href} alt={`ไฟล์ที่ ${i + 1}`} loading="lazy" className="size-full object-cover" />
-              ) : (
-                <span className="flex size-full flex-col items-center justify-center gap-1 p-1 text-center text-[11px] text-muted">
-                  <Icon name="file" className="size-6" />
-                  {f.legacy ? 'Drive (เดิม)' : f.mimeType === 'application/pdf' ? 'PDF' : 'ไฟล์'}
-                </span>
-              )}
-              <span className="absolute inset-0 hidden items-center justify-center bg-black/40 text-white group-hover:flex">
-                <Icon name="external" className="size-5" />
-              </span>
-            </a>
-          </li>
-        );
-      })}
-    </ul>
-  );
-}
-
-function ReviewControls({
-  current,
-  onReview,
-}: {
-  current: string;
-  onReview: (status: 'approved' | 'rejected', reason: string) => Promise<string | null>;
-}) {
-  const [rejecting, setRejecting] = useState(false);
-  const [reason, setReason] = useState('');
-  const [busy, setBusy] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-
-  const run = async (status: 'approved' | 'rejected') => {
-    if (status === 'rejected' && !reason.trim()) return setError('กรุณาระบุเหตุผล');
-    setBusy(true);
-    setError(null);
-    const err = await onReview(status, reason.trim());
-    setBusy(false);
-    if (err) setError(err);
-    else {
-      setRejecting(false);
-      setReason('');
-    }
-  };
-
-  if (rejecting) {
-    return (
-      <div className="mt-3 space-y-2">
-        <p className="text-sm font-medium">เหตุผลที่ไม่ผ่าน (ผู้สมัครจะเห็นข้อความนี้)</p>
-        <div className="flex flex-wrap gap-1.5">
-          {QUICK_REASONS.map((r) => (
-            <button
-              key={r}
-              type="button"
-              onClick={() => setReason((cur) => (cur ? `${cur} ${r}` : r))}
-              className="rounded-full border border-line px-2.5 py-0.5 text-xs hover:bg-surface"
-            >
-              {r}
-            </button>
-          ))}
-        </div>
-        <textarea
-          value={reason}
-          onChange={(e) => setReason(e.target.value)}
-          rows={2}
-          maxLength={500}
-          aria-label="เหตุผลที่ไม่ผ่าน"
-          className="w-full rounded-lg border border-line bg-background p-2 text-sm outline-none focus:border-danger focus:ring-2 focus:ring-danger/20"
-        />
-        <ErrorText>{error}</ErrorText>
-        <div className="flex gap-2">
-          <button
-            type="button"
-            disabled={busy}
-            onClick={() => run('rejected')}
-            className="rounded-lg bg-danger px-4 py-2 text-sm font-semibold text-white disabled:opacity-60"
-          >
-            {busy ? 'กำลังบันทึก...' : 'ยืนยันไม่ผ่าน'}
-          </button>
-          <button type="button" onClick={() => setRejecting(false)} className="rounded-lg px-4 py-2 text-sm text-muted hover:bg-surface">
-            ยกเลิก
-          </button>
-        </div>
-      </div>
-    );
-  }
-
-  return (
-    <div className="mt-3 space-y-2">
-      <div className="flex gap-2">
-        <button
-          type="button"
-          disabled={busy || current === 'approved'}
-          onClick={() => run('approved')}
-          className="rounded-lg border border-brand px-4 py-1.5 text-sm font-semibold text-brand-strong hover:bg-brand-tint disabled:border-line disabled:text-muted disabled:hover:bg-transparent"
-        >
-          {current === 'approved' ? 'ผ่านแล้ว' : busy ? 'กำลังบันทึก...' : 'ผ่าน'}
-        </button>
-        <button
-          type="button"
-          disabled={busy}
-          onClick={() => setRejecting(true)}
-          className="rounded-lg border border-line px-4 py-1.5 text-sm font-semibold text-danger hover:bg-danger-tint"
-        >
-          ไม่ผ่าน
-        </button>
-      </div>
-      <ErrorText>{error}</ErrorText>
-    </div>
   );
 }
 

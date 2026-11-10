@@ -45,6 +45,11 @@ export function AdminApp() {
   const [loaded, setLoaded] = useState<{ id: string; detail: ApplicantDetail | null; error: string | null } | null>(null);
   const listSeq = useRef(0);
   const [creating, setCreating] = useState(false);
+  /** หน้ารายละเอียดมีผลตรวจที่ยังไม่บันทึก */
+  const dirtyRef = useRef(false);
+  const setDirty = useCallback((d: boolean) => {
+    dirtyRef.current = d;
+  }, []);
 
   // ---------- รายชื่อ (รอพิมพ์เสร็จ 300ms ก่อนค้นหา) ----------
   const loadList = useCallback(async (opts: { q: string; filter: ApplicantListFilter; page: number }) => {
@@ -80,6 +85,8 @@ export function AdminApp() {
   const detail = current?.detail ?? null;
 
   const select = (id: string | null) => {
+    if (dirtyRef.current && id !== selectedId && !window.confirm('มีผลตรวจที่ยังไม่บันทึก — ออกจากหน้านี้โดยไม่บันทึก?')) return;
+    dirtyRef.current = false;
     setCreating(false);
     setSelectedId(id);
     writeSelected(id);
@@ -204,7 +211,7 @@ export function AdminApp() {
             </p>
           )}
           {current?.error && <p className="m-6 rounded-lg bg-danger-tint p-3 text-sm text-danger">{current.error}</p>}
-          {detail && <ApplicantDetailPanel key={detail.id} detail={detail} actions={actions} />}
+          {detail && <ApplicantDetailPanel key={detail.id} detail={detail} actions={actions} onDirtyChange={setDirty} />}
         </main>
     </div>
   );

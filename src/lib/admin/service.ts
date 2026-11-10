@@ -285,6 +285,7 @@ export async function getApplicantDetail(id: string): Promise<ApplicantDetail> {
       reason: st.reason,
       review: reviewOf(d.key, ''),
       files: fileViews(d.key, ''),
+      checks: d.checks,
       subitems: d.subitems.map((s, i) => ({
         title: s.title,
         optional: s.optional,
@@ -353,6 +354,7 @@ export async function reviewDocuments(admin: AdminProfile, id: string, rawItems:
   const items = validateReviewItems(rawItems, allDocs);
   const now = new Date().toISOString();
   const by = adminDisplayName(admin);
+  const wasComplete = (await getApplicantDetail(id)).stage === 'complete';
 
   ok(
     await db()
@@ -411,19 +413,28 @@ export async function reviewDocuments(admin: AdminProfile, id: string, rawItems:
     items.map((i) => `${i.docKey}${i.subitemTitle ? `/${i.subitemTitle}` : ''} → ${i.status}${i.reason ? ` (${i.reason})` : ''}`).join(' | '),
   );
 
+  const detail = await getApplicantDetail(id);
   if (notify) {
-    const { logoUrl } = lineConfig();
-    for (const m of buildReviewMessages(row.name, items, allDocs, logoUrl)) {
+    const { logoUrl, handler } = lineConfig();
+    const messages = buildReviewMessages({
+      applicantName: row.name,
+      items,
+      allDocs,
+      becameComplete: !wasComplete && detail.stage === 'complete',
+      linkFor: (doc) => buildAppLink(handler, { doc }),
+      logoUrl,
+    });
+    for (const m of messages) {
       await pushAndLog(
         row,
-        m.type === 'rejected' ? 'doc_rejected' : 'doc_approved',
+        m.type === 'rejected' ? 'doc_rejected' : 'docs_all_approved',
         m.altText,
         [{ type: 'flex', altText: m.altText, contents: m.bubble }],
         by,
       );
     }
   }
-  return getApplicantDetail(id);
+  return detail;
 }
 
 export async function setFeedback(admin: AdminProfile, id: string, rawText: unknown, sendLine: boolean) {

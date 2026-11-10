@@ -154,6 +154,19 @@ export function UploadScreen({
           {state === 'rejected' && <Badge tone="danger">ต้องแก้ไข</Badge>}
         </div>
         {!subitem && doc.description && <p className="mt-1 text-[15px] text-muted">{doc.description}</p>}
+        {doc.checks.length > 0 && (
+          <div className="mt-2 rounded-xl bg-surface p-3 text-sm">
+            <p className="font-semibold">ก่อนส่ง ตรวจให้แน่ใจว่า</p>
+            <ul className="mt-1 space-y-0.5">
+              {doc.checks.map((c) => (
+                <li key={c} className="flex items-start gap-1.5">
+                  <Icon name="check" className="mt-0.5 size-4 shrink-0 text-brand" />
+                  {c}
+                </li>
+              ))}
+            </ul>
+          </div>
+        )}
       </div>
 
       {state === 'rejected' && reason && (

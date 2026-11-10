@@ -87,16 +87,24 @@ function itemLabel(item: ReviewItemInput, allDocs: DocType[]): string {
   return item.subitemTitle ? `${base} - ${item.subitemTitle}` : base;
 }
 
-/** ข้อความ LINE หลังตรวจเอกสาร: ไม่ผ่าน 1 ข้อความ + ผ่าน 1 ข้อความ (รวมทุกรายการในครั้งเดียว) */
-export function buildReviewMessages(
-  applicantName: string,
-  items: ReviewItemInput[],
-  allDocs: DocType[],
-  logoUrl: string | null,
-): Array<{ type: 'rejected' | 'approved'; altText: string; bubble: FlexBubble }> {
-  const out: Array<{ type: 'rejected' | 'approved'; altText: string; bubble: FlexBubble }> = [];
+/**
+ * ข้อความ LINE หลัง HR กดบันทึกผลตรวจ — ส่งเฉพาะเรื่องที่ผู้สมัครต้องรู้/ต้องทำ:
+ *  - มีรายการไม่ผ่าน → 1 ข้อความรวมทุกรายการ + เหตุผล + ปุ่มเปิดหน้าส่งเอกสารที่เอกสารแรกที่ต้องแก้
+ *  - อนุมัติครบทุกรายการ (ครั้งแรก) → 1 ข้อความแจ้งว่าครบแล้ว
+ *  - ผ่านบางรายการ → ไม่แจ้ง (ระบบเดิมส่ง "เอกสารผ่าน" ทุกครั้งที่กด ผู้สมัครได้ข้อความรัวๆ)
+ */
+export function buildReviewMessages(opts: {
+  applicantName: string;
+  items: ReviewItemInput[];
+  allDocs: DocType[];
+  becameComplete: boolean;
+  /** ลิงก์เปิดหน้าส่งเอกสาร (docKey = เปิดเอกสารนั้นเลย) */
+  linkFor: (docKey?: string) => string;
+  logoUrl: string | null;
+}): Array<{ type: 'rejected' | 'all_approved'; altText: string; bubble: FlexBubble }> {
+  const { applicantName, items, allDocs, logoUrl } = opts;
+  const out: Array<{ type: 'rejected' | 'all_approved'; altText: string; bubble: FlexBubble }> = [];
   const rejected = items.filter((i) => i.status === 'rejected');
-  const approved = items.filter((i) => i.status === 'approved');
 
   if (rejected.length > 0) {
     const labels = rejected.map((i) => itemLabel(i, allDocs));
@@ -112,26 +120,20 @@ export function buildReviewMessages(
         greeting: labels.length === 1 ? labels[0] : `เอกสารที่ต้องแก้ไข ${labels.length} รายการ`,
         list: labels.length > 1 ? { title: 'รายการที่ต้องแก้ไข', items: labels } : undefined,
         note: { label: 'เหตุผลจาก HR', text: reasons, tone: 'danger' },
-        button: { label: 'แนบไฟล์ใหม่', postback: { data: 'action=open_menu', displayText: 'ต้องการแนบไฟล์ใหม่' } },
+        button: { label: 'แนบไฟล์ใหม่', uri: opts.linkFor(rejected[0].docKey) },
         logoUrl,
       }),
     });
-  }
-  if (approved.length > 0) {
-    const labels = [...new Set(approved.map((i) => itemLabel(i, allDocs)))];
+  } else if (opts.becameComplete) {
     out.push({
-      type: 'approved',
-      altText: `เอกสารของคุณ${applicantName} ผ่านการตรวจสอบ: ${labels.join(', ')}`.slice(0, 400),
+      type: 'all_approved',
+      altText: `เอกสารของคุณ${applicantName} ผ่านการตรวจสอบครบทุกรายการแล้ว`,
       bubble: buildNotifyFlex({
         tone: 'success',
-        title: 'เอกสารผ่านการตรวจสอบ',
+        title: 'เอกสารผ่านครบทุกรายการ',
         subtitle: 'อนุมัติโดย HR',
         greeting: applicantName ? `คุณ${applicantName}` : 'สวัสดีค่ะ',
-        list: { title: 'รายการที่ผ่าน', items: labels },
-        note:
-          labels.length > 1
-            ? { label: 'ข้อมูลเพิ่มเติม', text: 'หากยังมีรายการอื่นที่รอดำเนินการ กรุณาดำเนินการต่อในระบบ', tone: 'success' }
-            : undefined,
+        note: { label: 'ขั้นตอนถัดไป', text: 'เจ้าหน้าที่จะแจ้งวันเริ่มงานและรายละเอียดทางแชทนี้อีกครั้ง', tone: 'success' },
         logoUrl,
       }),
     });

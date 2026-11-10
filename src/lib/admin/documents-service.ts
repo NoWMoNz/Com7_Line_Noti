@@ -15,6 +15,8 @@ import type { AdminProfile } from './types';
 export interface DocSubitemSetting {
   title: string;
   optional: boolean;
+  /** file = ช่องอัปโหลด / check = จุดที่ HR ตรวจ (ผู้สมัครไม่ต้องอัปโหลด) */
+  kind: 'file' | 'check';
   fileCount: number;
 }
 export interface DocTypeSetting {
@@ -37,7 +39,7 @@ export interface DocTypeInput {
   enabled?: unknown;
   optional?: unknown;
   /** previousTitle = ชื่อเดิม (ถ้าเปลี่ยนชื่อ) */
-  subitems?: Array<{ title?: unknown; optional?: unknown; previousTitle?: unknown }>;
+  subitems?: Array<{ title?: unknown; optional?: unknown; previousTitle?: unknown; kind?: unknown }>;
 }
 
 const db = () => getSupabaseAdmin();
@@ -55,7 +57,7 @@ export async function listDocTypes(): Promise<DocTypeSetting[]> {
   const [types, counts] = await Promise.all([
     db()
       .from('doc_types')
-      .select('key, label, description, enabled, optional, covers_all, sort_order, doc_subitems(title, optional, sort_order)')
+      .select('key, label, description, enabled, optional, covers_all, sort_order, doc_subitems(title, optional, sort_order, kind)')
       .order('sort_order'),
     db().from('doc_file_counts').select('doc_key, subitem_title, file_count'),
   ]);
@@ -67,7 +69,7 @@ export async function listDocTypes(): Promise<DocTypeSetting[]> {
     optional: boolean;
     covers_all: boolean;
     sort_order: number;
-    doc_subitems: Array<{ title: string; optional: boolean; sort_order: number }>;
+    doc_subitems: Array<{ title: string; optional: boolean; sort_order: number; kind: 'file' | 'check' }>;
   }>;
   const c = ok(counts, 'file counts') as Array<{ doc_key: string; subitem_title: string; file_count: number }>;
   const count = (key: string, sub: string) => c.find((x) => x.doc_key === key && x.subitem_title === sub)?.file_count ?? 0;
@@ -83,7 +85,7 @@ export async function listDocTypes(): Promise<DocTypeSetting[]> {
     fileCount: count(r.key, ''),
     subitems: [...r.doc_subitems]
       .sort((a, b) => a.sort_order - b.sort_order)
-      .map((s) => ({ title: s.title, optional: s.optional, fileCount: count(r.key, s.title) })),
+      .map((s) => ({ title: s.title, optional: s.optional, kind: s.kind, fileCount: count(r.key, s.title) })),
   }));
 }
 
@@ -97,6 +99,7 @@ function cleanSubitems(raw: DocTypeInput['subitems']) {
   const list = (Array.isArray(raw) ? raw : []).map((s) => ({
     title: String(s?.title ?? '').replace(/\s+/g, ' ').trim(),
     optional: s?.optional === true,
+    kind: s?.kind === 'check' ? ('check' as const) : ('file' as const),
     previousTitle: s?.previousTitle ? String(s.previousTitle) : null,
   }));
   if (list.length > 30) throw new AdminInputError('หัวข้อย่อยได้ไม่เกิน 30 หัวข้อ');
@@ -168,7 +171,7 @@ export async function saveDocType(admin: AdminProfile, input: DocTypeInput): Pro
     ok(
       await db()
         .from('doc_subitems')
-        .insert(subitems.map((s, i) => ({ doc_key: key, title: s.title, optional: s.optional, sort_order: i }))),
+        .insert(subitems.map((s, i) => ({ doc_key: key, title: s.title, optional: s.optional, kind: s.kind, sort_order: i }))),
       'insert subitems',
     );
   }
@@ -177,6 +180,9 @@ export async function saveDocType(admin: AdminProfile, input: DocTypeInput): Pro
     ok(await db().from('applicant_files').update({ subitem_title: r.title }).eq('doc_key', key).eq('subitem_title', r.previousTitle!), 'rename files');
     ok(await db().from('doc_reviews').update({ subitem_title: r.title }).eq('doc_key', key).eq('subitem_title', r.previousTitle!), 'rename reviews');
   }
+
+  // หัวข้อที่เป็น "HR ตรวจ" ไม่มีช่องอัปโหลด → ย้ายไฟล์/ผลตีกลับที่เคยอยู่ในหัวข้อนั้นไปที่ตัวเอกสาร
+  if (subitems.some((s) => s.kind === 'check')) ok(await db().rpc('move_check_subitem_data'), 'move check data');
 
   await audit(
     admin,

@@ -101,6 +101,7 @@ function toItemView(s: DocStatus): DocItemView {
     subitems: s.subitems.map((x) => ({ title: x.title, optional: x.optional, state: x.state, reason: x.reason })),
     subDone: s.subDone,
     subRequired: s.subRequired,
+    checks: s.doc.checks,
   };
 }
 

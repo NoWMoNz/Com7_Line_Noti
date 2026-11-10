@@ -8,27 +8,13 @@
 -- =============================================================================
 alter table doc_subitems add column kind text not null default 'file' check (kind in ('file', 'check'));
 
--- แปลงหัวข้อที่เป็นจุดตรวจ — เรียกซ้ำได้ (สคริปต์ย้ายข้อมูลจากชีทเรียกอีกครั้งหลังนำเข้า)
-create or replace function public.convert_check_subitems() returns void
+-- ย้ายข้อมูลของหัวข้อชนิด check ทุกตัว: ไฟล์ → ช่องหลัก, ผลตีกลับ → ตัวเอกสาร — เรียกซ้ำได้
+-- (หน้าตั้งค่าเอกสารเรียกหลังบันทึก เผื่อ HR เปลี่ยนหัวข้อที่มีไฟล์แล้วเป็น "HR ตรวจ")
+create or replace function public.move_check_subitem_data() returns void
 language plpgsql
 set search_path = ''
 as $$
 begin
-  update public.doc_subitems s
-     set kind = 'check'
-    from (values
-      ('doc3_id_card', 'เซ็นรับรอง'),
-      ('doc3_id_card', 'วันหมดอายุบัตร'),
-      ('doc4_house_reg', 'เซ็นรับรอง'),
-      ('doc4_house_reg', 'เอกสารเปลี่ยนชื่อจริง-นามสกุล (ถ้ามี)'),
-      ('doc5_transcript', 'เซ็นรับรอง'),
-      ('doc5_transcript', 'TRANSCRIPT'),
-      ('doc7_criminal_check', 'เช็คครบทุกจุดที่กำหนด'),
-      ('doc8_health_check', 'ตรวจครบทุกรายการ'),
-      ('doc10_bookbank', 'เซ็นรับรอง')
-    ) as c(doc_key, title)
-   where s.doc_key = c.doc_key and s.title = c.title;
-
   -- ไฟล์ที่เคยส่งเข้าหัวข้อตรวจ → ช่องหลักของเอกสาร (ไม่มีไฟล์หาย)
   update public.applicant_files f
      set subitem_title = ''
@@ -54,9 +40,37 @@ begin
 end;
 $$;
 
+-- กำหนดหัวข้อของระบบเดิมที่เป็นจุดตรวจ แล้วย้ายข้อมูล
+-- เรียกครั้งแรกที่นี่ และอีกครั้งหลังสคริปต์ย้ายข้อมูลจากชีทนำเข้า DocConfig (ซึ่งเขียนหัวข้อย่อยใหม่ทั้งชุด)
+create or replace function public.convert_check_subitems() returns void
+language plpgsql
+set search_path = ''
+as $$
+begin
+  update public.doc_subitems s
+     set kind = 'check'
+    from (values
+      ('doc3_id_card', 'เซ็นรับรอง'),
+      ('doc3_id_card', 'วันหมดอายุบัตร'),
+      ('doc4_house_reg', 'เซ็นรับรอง'),
+      ('doc4_house_reg', 'เอกสารเปลี่ยนชื่อจริง-นามสกุล (ถ้ามี)'),
+      ('doc5_transcript', 'เซ็นรับรอง'),
+      ('doc5_transcript', 'TRANSCRIPT'),
+      ('doc7_criminal_check', 'เช็คครบทุกจุดที่กำหนด'),
+      ('doc8_health_check', 'ตรวจครบทุกรายการ'),
+      ('doc10_bookbank', 'เซ็นรับรอง')
+    ) as c(doc_key, title)
+   where s.doc_key = c.doc_key and s.title = c.title;
+
+  perform public.move_check_subitem_data();
+end;
+$$;
+
 -- ห้ามเรียกผ่าน API ด้วยคีย์สาธารณะ — เฉพาะ service role (สคริปต์ฝั่ง server)
 revoke execute on function public.convert_check_subitems() from public, anon, authenticated;
+revoke execute on function public.move_check_subitem_data() from public, anon, authenticated;
 grant execute on function public.convert_check_subitems() to service_role;
+grant execute on function public.move_check_subitem_data() to service_role;
 
 select public.convert_check_subitems();
 

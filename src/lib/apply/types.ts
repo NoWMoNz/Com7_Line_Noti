@@ -24,6 +24,8 @@ export interface DocItemView {
   subitems: SubitemView[];
   subDone: number;
   subRequired: number;
+  /** สิ่งที่ HR จะตรวจในไฟล์ (บอกผู้สมัครก่อนส่ง) */
+  checks: string[];
 }
 
 export interface DocsView {

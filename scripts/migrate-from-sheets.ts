@@ -52,6 +52,8 @@ async function load(db: SupabaseClient, plan: MigrationPlan) {
   const keys = plan.docTypes.map((d) => d.key);
   must(await db.from('doc_subitems').delete().in('doc_key', keys), 'clear doc_subitems');
   for (const c of chunk(plan.docSubitems)) must(await db.from('doc_subitems').insert(c), 'doc_subitems');
+  // หัวข้อที่เป็นจุดตรวจของ HR (เซ็นรับรอง ฯลฯ) ไม่ใช่ช่องอัปโหลด — ดู migrations/0004_doc_checks.sql
+  // (เรียกซ้ำตอนท้ายหลังนำเข้าไฟล์/ผลตรวจด้วย)
 
   console.log('[2/8] branches (แทนที่ทั้งหมด)');
   must(await db.from('branches').delete().gte('id', 0), 'clear branches');
@@ -144,6 +146,9 @@ async function load(db: SupabaseClient, plan: MigrationPlan) {
   must(await db.from('audit_log').delete().eq('legacy', true), 'clear legacy audit_log');
   const auditRows = plan.audits.map(({ created_at, ...a }) => ({ ...a, ...(created_at ? { created_at } : {}), legacy: true }));
   for (const c of chunk(auditRows)) must(await db.from('audit_log').insert(c), 'audit_log');
+
+  console.log('[+] แปลงหัวข้อที่เป็นจุดตรวจของ HR (ไฟล์ย้ายไปช่องหลัก, ผลตีกลับย้ายไปที่เอกสาร)');
+  must(await db.rpc('convert_check_subitems'), 'convert_check_subitems');
 }
 
 async function main() {
