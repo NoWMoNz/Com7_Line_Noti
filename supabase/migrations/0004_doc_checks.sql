@@ -74,5 +74,5 @@ grant execute on function public.move_check_subitem_data() to service_role;
 
 select public.convert_check_subitems();
 
--- เลิกรับเอกสารผ่านแชท LINE (ส่งผ่าน MINI App ทางเดียว) — ไม่ต้องเก็บสถานะ "รอไฟล์" อีก
-drop table line_pending_uploads;
+-- หมายเหตุ: ตาราง line_pending_uploads (สถานะ "รอไฟล์" ของการส่งเอกสารทางแชท) เลิกใช้แล้ว
+-- แต่ยังไม่ลบ — ลบได้ภายหลังด้วย: drop table line_pending_uploads;

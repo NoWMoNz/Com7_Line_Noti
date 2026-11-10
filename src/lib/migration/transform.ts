@@ -104,11 +104,27 @@ export interface MigrationPlan {
   warnings: string[];
 }
 
-/** prefix ที่ LINE bot ระบบเดิมใช้แทน doc key ในเซลล์/ผลตรวจ */
+/**
+ * ชื่อกลุ่มที่หน้าอัปโหลด / LINE bot ระบบเดิมใช้แทน doc key ในเซลล์และผลตรวจ
+ * (กลุ่มเขียนตายตัวในโค้ดเดิม ไม่ได้มาจาก DocConfig) — "กลุ่ม::หัวข้อ" → หัวข้อย่อยของเอกสารนั้น
+ */
 const LINE_CANON_TO_DOC: Record<string, string> = {
   application: 'doc1_application_set',
   guarantor: 'doc6_guarantor',
   'guarantor-copy': 'doc11_guarantor_copy',
+  bank: 'doc10_bookbank',
+};
+
+/**
+ * กลุ่มที่รวมหลายเอกสารไว้ด้วยกัน — "กลุ่ม::ชื่อ" คือเอกสารทั้งชิ้น ไม่ใช่หัวข้อย่อย
+ * (หัวข้อย่อยใน DocConfig ของเอกสารเหล่านี้ เช่น "เซ็นรับรอง" ไม่เคยถูกใช้เป็นช่องอัปโหลดจริง)
+ */
+const LEGACY_GROUP_TITLE_TO_DOC: Record<string, string> = {
+  'personal::สำเนาบัตรประชาชน': 'doc3_id_card',
+  'personal::สำเนาทะเบียนบ้าน': 'doc4_house_reg',
+  'personal::สำเนาวุฒิการศึกษา': 'doc5_transcript',
+  'health::ผลตรวจสุขภาพ': 'doc8_health_check',
+  'health::ใบเสร็จตรวจสุขภาพ': 'doc9_health_receipt',
 };
 
 const SECRET_SETTING_KEYS = new Set(['CHANNEL_ACCESS_TOKEN']);
@@ -438,9 +454,10 @@ export function buildMigrationPlan(exp: SheetExport): MigrationPlan {
         if (status !== 'pending_review' && status !== 'approved' && status !== 'rejected') continue;
 
         const parts = rawKey.split('::');
-        const docKey = resolveDocKey(parts[0]);
+        const wholeDoc = LEGACY_GROUP_TITLE_TO_DOC[rawKey.trim()];
+        const docKey = wholeDoc && docKeys.has(wholeDoc) ? wholeDoc : resolveDocKey(parts[0]);
         let subitem = '';
-        if (docKey && parts.length >= 2) subitem = matchSubitem(docKey, parts.slice(1).join('::')) ?? '\u0000';
+        if (docKey && !wholeDoc && parts.length >= 2) subitem = matchSubitem(docKey, parts.slice(1).join('::')) ?? '\u0000';
         if (!docKey || subitem === '\u0000') {
           skippedReviewKeys++;
           continue;

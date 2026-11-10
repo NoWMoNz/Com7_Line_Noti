@@ -114,6 +114,39 @@ describe('buildMigrationPlan', () => {
     expect(plan.warnings.join('\n')).toMatch(/ข้ามผลตรวจ 1 รายการ/);
   });
 
+  it('ผลตรวจกลุ่มของหน้าอัปโหลดเดิม: bank → หัวข้อบัญชี, personal/health → ทั้งเอกสาร (ตามรูปแบบในชีทจริง)', () => {
+    const p = buildMigrationPlan({
+      sheets: {
+        DocConfig: [
+          ['doc_key', 'doc_label', 'doc_description', 'doc_subitems', 'enabled'],
+          ['doc3_id_card', '3. สำเนาบัตรประชาชน', '', '["เซ็นรับรอง","วันหมดอายุบัตร"]', ''],
+          ['doc9_health_receipt', '9. ใบเสร็จ', '', '[]', ''],
+          ['doc10_bookbank', '10. บัญชีเงินเดือน', '', '["สำเนาเปิดบัญชี SCB","ใบเสร็จเครดิตยูโร"]', ''],
+        ],
+        Applicants: [
+          ['applicant_id', 'name', 'phone', 'doc3_id_card', 'doc10_bookbank', 'doc_reviews_json'],
+          [
+            'APP_9', 'ทดสอบ', '0811111111',
+            `personal::สำเนาบัตรประชาชน::${D}id\npersonal::เอกสารทหาร::${D}mil`,
+            `bank::สำเนาเปิดบัญชี SCB::${D}scb`,
+            JSON.stringify({
+              'personal::สำเนาบัตรประชาชน': { s: 'approved' },
+              'health::ใบเสร็จตรวจสุขภาพ': { s: 'rejected', r: 'ไม่ชัด' },
+              'bank::สำเนาเปิดบัญชี SCB': { s: 'pending_review' },
+            }),
+          ],
+        ],
+      },
+    });
+    // ไฟล์ของกลุ่ม personal อยู่ช่องหลักของบัตร (รวมเอกสารทหารที่แนบมาด้วย) / bank เข้าหัวข้อถูกช่อง
+    expect(p.files.map((f) => `${f.doc_key}|${f.subitem_title}`).sort()).toEqual(['doc10_bookbank|สำเนาเปิดบัญชี SCB', 'doc3_id_card|', 'doc3_id_card|']);
+    expect(p.reviews.map((r) => `${r.doc_key}|${r.subitem_title}|${r.status}`).sort()).toEqual([
+      'doc10_bookbank|สำเนาเปิดบัญชี SCB|pending_review',
+      'doc3_id_card||approved',
+      'doc9_health_receipt||rejected',
+    ]);
+  });
+
   it('สาขา / แอดมิน / ค่าตั้งค่า / log', () => {
     expect(plan.branches).toEqual([
       expect.objectContaining({ shop_code: '1001', shop_name: 'สาขาสยาม', company: 'Com7', province: 'กรุงเทพ' }),

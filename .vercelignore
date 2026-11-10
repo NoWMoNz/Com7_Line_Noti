@@ -6,3 +6,8 @@ node_modules
 .next
 coverage
 .impeccable
+
+# ข้อมูลจริงจากชีทเดิม (มีข้อมูลส่วนบุคคล) — ห้าม commit / ห้ามอัปโหลด
+*.xlsx
+*.xls
+*.csv
