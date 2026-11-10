@@ -437,7 +437,10 @@ export async function uploadDocuments(
   });
 
   const state = await buildState(applicant, deps);
-  if (!view.allSatisfied && state.docs?.allSatisfied) await pushDocsComplete(applicant, state.docs.total, deps);
+  if (!view.allSatisfied && state.docs?.allSatisfied) {
+    await repo.markCompleted(applicant.id, docs.filter((d) => !d.coversAll).map((d) => d.key));
+    await pushDocsComplete(applicant, state.docs.total, deps);
+  }
   return state;
 }
 

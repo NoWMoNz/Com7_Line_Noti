@@ -33,7 +33,7 @@ export function ApplicantDetailPanel({ detail, actions }: { detail: ApplicantDet
         </p>
         <p className="text-xs text-muted">
           ลงทะเบียน {fmtDateTime(detail.createdAt)} · ส่งเอกสารล่าสุด {fmtDateTime(detail.lastUploadedAt)}
-          {detail.completedAt && ` · ครบเมื่อ ${fmtDateTime(detail.completedAt)}`}
+          {detail.completedAt && ` · ส่งครบเมื่อ ${fmtDateTime(detail.completedAt)}`}
         </p>
       </header>
 

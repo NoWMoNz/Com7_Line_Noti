@@ -2,13 +2,11 @@
 
 import { useCallback, useEffect, useRef, useState } from 'react';
 import type {
-  AdminProfile,
   ApplicantDetail,
   ApplicantListFilter,
   ApplicantListResult,
   ReviewItemInput,
 } from '@/lib/admin/types';
-import { getSupabaseBrowser } from '@/lib/supabase/browser';
 import { Icon, Spinner } from '@/components/ui';
 import { adminFetch } from './admin-lib';
 import { ApplicantDetailPanel, type DetailActions } from './applicant-detail';
@@ -26,25 +24,17 @@ function writeSelected(id: string | null) {
 }
 
 export function AdminApp() {
-  const [me, setMe] = useState<AdminProfile | null>(null);
   const [q, setQ] = useState('');
   const [filter, setFilter] = useState<ApplicantListFilter>('all');
   const [page, setPage] = useState(1);
   const [list, setList] = useState<ApplicantListResult | null>(null);
   const [listLoading, setListLoading] = useState(true);
   const [listError, setListError] = useState<string | null>(null);
-  const [selectedId, setSelectedId] = useState<string | null>(null);
+  // render หลัง AdminShell รู้ตัวแอดมินแล้ว (ฝั่ง browser เท่านั้น) จึงอ่าน URL ได้เลย
+  const [selectedId, setSelectedId] = useState<string | null>(readSelected);
   /** ผลโหลดรายละเอียดล่าสุด ผูกกับ id — ไม่ตรงกับ selectedId = กำลังโหลด */
   const [loaded, setLoaded] = useState<{ id: string; detail: ApplicantDetail | null; error: string | null } | null>(null);
   const listSeq = useRef(0);
-
-  useEffect(() => {
-    adminFetch<AdminProfile>('me').then((r) => {
-      if (!r.ok) return;
-      setMe(r.data);
-      setSelectedId(readSelected());
-    });
-  }, []);
 
   // ---------- รายชื่อ (รอพิมพ์เสร็จ 300ms ก่อนค้นหา) ----------
   const loadList = useCallback(async (opts: { q: string; filter: ApplicantListFilter; page: number }) => {
@@ -104,35 +94,9 @@ export function AdminApp() {
     unlinkLine: () => mutate('unlink-line', {}),
   };
 
-  async function logout() {
-    await getSupabaseBrowser().auth.signOut();
-    window.location.replace('/admin/login');
-  }
 
   return (
-    <div className="flex h-dvh flex-col">
-      <header className="flex items-center gap-3 border-b border-line px-4 py-2.5">
-        <p className="font-semibold">
-          <span className="text-brand">Com7</span> Recruitment
-        </p>
-        <span className="hidden text-sm text-muted sm:inline">· ผู้สมัคร</span>
-        <div className="ml-auto flex items-center gap-3 text-sm">
-          {me && (
-            <span className="hidden text-muted sm:inline">
-              {me.fullName || me.email} <span className="text-xs">({me.role})</span>
-            </span>
-          )}
-          <button
-            type="button"
-            onClick={logout}
-            className="flex items-center gap-1.5 rounded-lg px-2 py-1 text-muted hover:bg-surface hover:text-foreground"
-          >
-            <Icon name="logout" className="size-4" /> ออกจากระบบ
-          </button>
-        </div>
-      </header>
-
-      <div className="grid min-h-0 flex-1 lg:grid-cols-[380px_1fr]">
+    <div className="grid min-h-0 flex-1 lg:grid-cols-[380px_1fr]">
         <div className={`min-h-0 border-line lg:flex lg:border-r ${selectedId ? 'hidden' : 'flex'} flex-col`}>
           <ApplicantList
             q={q}
@@ -177,7 +141,6 @@ export function AdminApp() {
           {current?.error && <p className="m-6 rounded-lg bg-danger-tint p-3 text-sm text-danger">{current.error}</p>}
           {detail && <ApplicantDetailPanel key={detail.id} detail={detail} actions={actions} />}
         </main>
-      </div>
     </div>
   );
 }

@@ -371,7 +371,8 @@ export async function reviewDocuments(admin: AdminProfile, id: string, rawItems:
   const reviews = (ok(reviewsRes, 'reviews') as ReviewRow[]).map(toReview);
   const required = requiredDocsFor(row.required_doc_keys, allDocs);
   const summary = summarizeApplicantDocs(required, files, reviews);
-  const complete = summary.complete || !!row.onboard_notified_at;
+  // "ส่งครบ" ตามความหมายของระบบเดิม (ดู completionChange)
+  const complete = summary.allSatisfied || !!row.onboard_notified_at;
   const change = completionChange(complete, row.completed_at, row.required_doc_keys, required);
 
   const patch: Record<string, unknown> = {

@@ -116,3 +116,48 @@ export interface ReviewItemInput {
 }
 
 export type AdminResponse<T> = { ok: true; data: T } | { ok: false; error: string };
+
+// ---------------------------------------------------------------------------
+// แจ้งเริ่มงาน
+
+export interface OnboardingItem {
+  id: string;
+  code: string;
+  name: string;
+  phone: string;
+  branch: string;
+  /** บริษัทที่บันทึกไว้ หรือหาจากสาขา (ใช้เลือกเทมเพลต) */
+  company: string;
+  position: string;
+  startDate: string | null;
+  salary: number | null;
+  ta: string;
+  notes: string;
+  lineLinked: boolean;
+  notifiedAt: string | null;
+  updatedAt: string | null;
+  updatedBy: string | null;
+}
+
+export interface OnboardingData {
+  items: OnboardingItem[];
+  templates: Record<string, { label: string; color: string; template: string }>;
+}
+
+export interface OnboardingInfoInput {
+  name?: string;
+  phone?: string;
+  branch?: string;
+  company?: string;
+  position?: string;
+  startDate?: string | null;
+  salary?: number | null;
+  ta?: string;
+  notes?: string;
+}
+
+export interface BranchOption {
+  id: number;
+  label: string;
+  company: string;
+}

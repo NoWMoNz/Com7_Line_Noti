@@ -132,6 +132,17 @@ export function createSupabaseRepo(db: SupabaseClient): Repo {
       return toApplicant(check(res, 'updateApplicant reload') as ApplicantRow);
     },
 
+    async markCompleted(id, requiredDocKeys) {
+      const now = new Date().toISOString();
+      check(await db.from('applicants').update({ completed_at: now }).eq('id', id).is('completed_at', null), 'markCompleted');
+      if (requiredDocKeys.length > 0) {
+        check(
+          await db.from('applicants').update({ required_doc_keys: requiredDocKeys }).eq('id', id).is('required_doc_keys', null),
+          'markCompleted snapshot',
+        );
+      }
+    },
+
     async getDocTypes() {
       if (docTypesCache && Date.now() - docTypesCache.at < DOC_TYPES_TTL_MS) return docTypesCache.value;
       const res = await db

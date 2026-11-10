@@ -8,5 +8,5 @@ const FILTERS: ApplicantListFilter[] = ['all', 'pending_approval', 'approved'];
 export async function GET(request: Request) {
   const p = new URL(request.url).searchParams;
   const filter = FILTERS.find((f) => f === p.get('filter')) ?? 'all';
-  return adminRoute(() => listApplicants({ q: p.get('q') ?? '', filter, page: Number(p.get('page') ?? 1) }));
+  return adminRoute(() => listApplicants({ q: p.get('q') ?? '', filter, page: Number(p.get('page') ?? 1) }), 'applicants');
 }

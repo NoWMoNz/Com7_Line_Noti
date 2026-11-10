@@ -64,6 +64,11 @@ export interface Repo {
   findApplicantsByPhone(phone: string): Promise<Applicant[]>;
   createApplicant(input: NewApplicantInput): Promise<Applicant>;
   updateApplicant(id: string, patch: ApplicantPatch): Promise<Applicant>;
+  /**
+   * ส่งเอกสารครบ: ตั้ง completed_at (ถ้ายังไม่มี) และล็อกชุดเอกสาร required_doc_keys (ถ้ายังไม่มี)
+   * — เพิ่มเอกสารใหม่ภายหลังจะไม่บังคับคนที่ส่งครบไปแล้ว
+   */
+  markCompleted(id: string, requiredDocKeys: string[]): Promise<void>;
   /** ประเภทเอกสารทั้งหมด (รวมที่ปิด) พร้อมหัวข้อย่อย เรียงตาม sortOrder */
   getDocTypes(): Promise<DocType[]>;
   getDocState(applicantId: string): Promise<{ files: FileSlotRef[]; reviews: DocReview[] }>;

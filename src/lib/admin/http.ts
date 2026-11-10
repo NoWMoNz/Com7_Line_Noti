@@ -2,15 +2,19 @@ import 'server-only';
 import { unstable_rethrow } from 'next/navigation';
 import { AdminAuthError, requireAdmin } from './auth';
 import { ReviewInputError } from './logic';
+import { canAccess, type AdminSection } from './roles';
 import { AdminInputError } from './service';
 import type { AdminProfile, AdminResponse } from './types';
 
 const NO_STORE = { 'Cache-Control': 'no-store' };
 
-/** ตรวจสิทธิ์แอดมิน → รันคำสั่ง → ตอบ JSON { ok, data } หรือ { ok: false, error } */
-export async function adminRoute<T>(run: (admin: AdminProfile) => Promise<T>): Promise<Response> {
+/**
+ * ตรวจสิทธิ์แอดมิน (+ สิทธิ์เข้าหน้านั้นตาม role) → รันคำสั่ง → ตอบ JSON { ok, data } หรือ { ok: false, error }
+ */
+export async function adminRoute<T>(run: (admin: AdminProfile) => Promise<T>, section?: AdminSection): Promise<Response> {
   try {
     const admin = await requireAdmin();
+    if (section && !canAccess(admin.role, section)) throw new AdminAuthError(403, 'บัญชีของคุณไม่มีสิทธิ์ใช้งานส่วนนี้');
     const data = await run(admin);
     return Response.json({ ok: true, data } satisfies AdminResponse<T>, { headers: NO_STORE });
   } catch (err) {

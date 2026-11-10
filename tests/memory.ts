@@ -29,6 +29,7 @@ export function createMemoryRepo(docs: DocType[] = DOCS) {
   const pending = new Map<string, PendingUpload>();
   const activity: string[] = [];
   const notifications: string[] = [];
+  const completed = new Map<string, string[]>();
 
   const add = (extra: Partial<Applicant> = {}) => {
     const a = makeApplicant(applicants.length + 1, extra);
@@ -76,6 +77,11 @@ export function createMemoryRepo(docs: DocType[] = DOCS) {
       }
       if (patch.bindLineUserId && !a.lineUserId) a.lineUserId = patch.bindLineUserId;
       return { ...a };
+    },
+    async markCompleted(id, keys) {
+      completed.set(id, keys);
+      const a = byId(id);
+      if (!a.requiredDocKeys && keys.length) a.requiredDocKeys = keys;
     },
     async getDocTypes() {
       return docs;
@@ -131,7 +137,7 @@ export function createMemoryRepo(docs: DocType[] = DOCS) {
     reviews.push({ applicantId, docKey, subitemTitle, status, reason, reviewedBy: 'HR', updatedAt: null });
   };
 
-  return { repo, applicants, files, reviews, pending, activity, notifications, add, review };
+  return { repo, applicants, files, reviews, pending, activity, notifications, completed, add, review };
 }
 
 export function createFakeLine(contentType = 'image/jpeg', size = 1000) {

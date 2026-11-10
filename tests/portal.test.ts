@@ -232,6 +232,8 @@ describe('uploadDocuments', () => {
     const s = await up('doc11_guarantor_copy', 'สำเนาบัตรประชาชน', [JPG()]);
     expect(s.docs?.allSatisfied).toBe(true);
     expect(fake.pushes).toHaveLength(1);
+    // ส่งครบ → ตั้ง completed_at + ล็อกชุดเอกสาร (ไม่รวมไฟล์รวม)
+    expect(mem.completed.get('app-1')).toEqual(['doc1_application_set', 'doc9_health_receipt', 'doc11_guarantor_copy']);
     await up('doc11_guarantor_copy', 'สลิปเงินเดือน (ถ้ามี)', [JPG()]);
     expect(fake.pushes).toHaveLength(1);
   });
