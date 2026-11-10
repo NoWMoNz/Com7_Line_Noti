@@ -32,8 +32,8 @@ beforeAll(async () => {
 const one = async <T>(sql: string, params: unknown[] = []) => (await db.query<T>(sql, params)).rows[0];
 
 describe('schema', () => {
-  it('seed: เอกสาร 12 ชนิด, ไฟล์รวม 1 ชนิด, bucket private', async () => {
-    expect(await one<{ n: number }>('select count(*)::int n from doc_types')).toEqual({ n: 12 });
+  it('seed: เอกสาร 14 ชนิด (2 ไม่บังคับ), ไฟล์รวม 1 ชนิด, bucket private', async () => {
+    expect(await one<{ n: number }>('select count(*)::int n from doc_types')).toEqual({ n: 14 });
     expect(await one<{ key: string }>('select key from doc_types where covers_all')).toEqual({ key: 'doc0_all_in_one' });
     expect(await one<{ public: boolean }>(`select public from storage.buckets where id = 'applicant-docs'`)).toEqual({ public: false });
   });

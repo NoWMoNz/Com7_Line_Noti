@@ -14,7 +14,10 @@ insert into doc_types (key, label, description, sort_order, optional, covers_all
   ('doc9_health_receipt',  '9. ใบเสร็จตรวจสุขภาพ',         '',                                  8, false, false),
   ('doc10_bookbank',       '10. บัญชีเงินเดือน',           'สำหรับรับเงินเดือน',                  9, false, false),
   ('doc11_guarantor_copy', '11. สำเนาเอกสารคนค้ำ',         'เซ็นสำเนาถูกต้องทุกหน้า',              10, false, false),
-  ('doc12_kyc',            '12. KYC ยืนยันตัวตนคนค้ำ',     'ถ่ายรูปยืนยันบุคคล',                  11, false, false)
+  ('doc12_kyc',            '12. KYC ยืนยันตัวตนคนค้ำ',     'ถ่ายรูปยืนยันบุคคล',                  11, false, false),
+  -- แยกออกมาจากกลุ่ม "personal" ของหน้าอัปโหลดเดิม (เดิมฝากไฟล์ไว้ในช่องบัตรประชาชน)
+  ('doc13_name_change',    '13. เอกสารเปลี่ยนชื่อ-นามสกุล (ถ้ามี)', 'ถ้าเคยเปลี่ยนชื่อหรือนามสกุล แนบใบเปลี่ยนชื่อ/นามสกุล', 12, true, false),
+  ('doc14_military',       '14. เอกสารทางทหาร (ถ้ามี)',    'สำหรับผู้ชาย เช่น สด.8 / สด.43 / ใบผ่านการเกณฑ์ทหาร', 13, true, false)
 on conflict (key) do nothing;
 
 insert into doc_subitems (doc_key, title, sort_order, optional) values
@@ -24,7 +27,6 @@ insert into doc_subitems (doc_key, title, sort_order, optional) values
   ('doc3_id_card',         'เซ็นรับรอง', 0, false),
   ('doc3_id_card',         'วันหมดอายุบัตร', 1, false),
   ('doc4_house_reg',       'เซ็นรับรอง', 0, false),
-  ('doc4_house_reg',       'เอกสารเปลี่ยนชื่อจริง-นามสกุล (ถ้ามี)', 1, true),
   ('doc5_transcript',      'เซ็นรับรอง', 0, false),
   ('doc5_transcript',      'TRANSCRIPT', 1, false),
   ('doc6_guarantor',       'เอกสารคนค้ำ หน้าที่ 1', 0, false),

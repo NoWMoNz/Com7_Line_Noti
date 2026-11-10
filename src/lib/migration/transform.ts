@@ -120,12 +120,36 @@ const LINE_CANON_TO_DOC: Record<string, string> = {
  * (หัวข้อย่อยใน DocConfig ของเอกสารเหล่านี้ เช่น "เซ็นรับรอง" ไม่เคยถูกใช้เป็นช่องอัปโหลดจริง)
  */
 const LEGACY_GROUP_TITLE_TO_DOC: Record<string, string> = {
+  'personal::เอกสารเปลี่ยนชื่อ': 'doc13_name_change',
+  'personal::เอกสารเปลี่ยนชื่อ (ถ้ามี)': 'doc13_name_change',
+  'personal::เอกสารทหาร': 'doc14_military',
+  'personal::เอกสารทหาร (ถ้ามี)': 'doc14_military',
   'personal::สำเนาบัตรประชาชน': 'doc3_id_card',
   'personal::สำเนาทะเบียนบ้าน': 'doc4_house_reg',
   'personal::สำเนาวุฒิการศึกษา': 'doc5_transcript',
   'health::ผลตรวจสุขภาพ': 'doc8_health_check',
   'health::ใบเสร็จตรวจสุขภาพ': 'doc9_health_receipt',
 };
+
+/** เอกสารไม่บังคับที่ระบบใหม่แยกออกมา (ตรงกับ supabase/seed.sql) */
+const EXTRA_DOC_TYPES: Array<Omit<DocTypeRow, 'sort_order'>> = [
+  {
+    key: 'doc13_name_change',
+    label: '13. เอกสารเปลี่ยนชื่อ-นามสกุล (ถ้ามี)',
+    description: 'ถ้าเคยเปลี่ยนชื่อหรือนามสกุล แนบใบเปลี่ยนชื่อ/นามสกุล',
+    enabled: true,
+    optional: true,
+    covers_all: false,
+  },
+  {
+    key: 'doc14_military',
+    label: '14. เอกสารทางทหาร (ถ้ามี)',
+    description: 'สำหรับผู้ชาย เช่น สด.8 / สด.43 / ใบผ่านการเกณฑ์ทหาร',
+    enabled: true,
+    optional: true,
+    covers_all: false,
+  },
+];
 
 const SECRET_SETTING_KEYS = new Set(['CHANNEL_ACCESS_TOKEN']);
 
@@ -263,6 +287,24 @@ export function buildMigrationPlan(exp: SheetExport): MigrationPlan {
     subitemsByDoc.set(key, list);
     docSubitems.push(...list);
   });
+
+  // เอกสารไม่บังคับที่แยกออกมาจากกลุ่ม "personal" ของหน้าอัปโหลดเดิม (เดิมไฟล์ฝากไว้ในช่องบัตรประชาชน)
+  if (docTypes.length) {
+    for (const extra of EXTRA_DOC_TYPES) {
+      if (docTypes.some((d) => d.key === extra.key)) continue;
+      docTypes.push({ ...extra, sort_order: docTypes.length });
+      subitemsByDoc.set(extra.key, []);
+    }
+    // หัวข้อ "เอกสารเปลี่ยนชื่อ" ของทะเบียนบ้าน → เป็นเอกสารแยกแล้ว
+    const house = subitemsByDoc.get('doc4_house_reg');
+    if (house) {
+      const keep = house.filter((s) => !normTitle(s.title).startsWith(normTitle('เอกสารเปลี่ยนชื่อ')));
+      subitemsByDoc.set('doc4_house_reg', keep);
+      for (let i = docSubitems.length - 1; i >= 0; i--) {
+        if (docSubitems[i].doc_key === 'doc4_house_reg' && !keep.includes(docSubitems[i])) docSubitems.splice(i, 1);
+      }
+    }
+  }
   const docKeys = new Set(docTypes.map((d) => d.key));
 
   const matchSubitem = (docKey: string, raw: string): string | null => {
@@ -427,14 +469,19 @@ export function buildMigrationPlan(exp: SheetExport): MigrationPlan {
         else if (allInOneUrls.has(url)) continue; // URL ที่ถูกคัดลอกมาจากไฟล์รวม
 
         let subitem = '';
+        let target = doc.key;
         if (idx !== -1) {
-          const parts = t.slice(0, idx).split('::');
-          if (parts.length >= 2) subitem = matchSubitem(doc.key, parts.slice(1).join('::')) ?? '';
+          const prefix = t.slice(0, idx);
+          const parts = prefix.split('::');
+          // "personal::เอกสารทหาร" ที่ฝากไว้ในเซลล์บัตรประชาชน → เอกสารของตัวเอง
+          const own = LEGACY_GROUP_TITLE_TO_DOC[prefix.trim()];
+          if (own && own !== doc.key && docKeys.has(own)) target = own;
+          else if (parts.length >= 2) subitem = matchSubitem(doc.key, parts.slice(1).join('::')) ?? '';
         }
-        const k = subitem + '\u0000' + url;
+        const k = target + '\u0000' + subitem + '\u0000' + url;
         if (seen.has(k)) continue;
         seen.add(k);
-        files.push({ applicant_code: code, doc_key: doc.key, subitem_title: subitem, legacy_url: url });
+        files.push({ applicant_code: code, doc_key: target, subitem_title: subitem, legacy_url: url });
       }
     }
 

@@ -70,7 +70,16 @@ describe('buildMigrationPlan', () => {
   const plan = buildMigrationPlan(EXPORT);
 
   it('DocConfig: ไฟล์รวม = covers_all, เอกสารที่ปิด, หัวข้อ "(ถ้ามี)" = optional', () => {
-    expect(plan.docTypes.map((d) => d.key)).toEqual(['doc0_all_in_one', 'doc1_application_set', 'doc9_health_receipt', 'doc11_guarantor_copy']);
+    // + เอกสารไม่บังคับที่ระบบใหม่แยกออกมา (เปลี่ยนชื่อ / ทหาร) ต่อท้าย
+    expect(plan.docTypes.map((d) => d.key)).toEqual([
+      'doc0_all_in_one',
+      'doc1_application_set',
+      'doc9_health_receipt',
+      'doc11_guarantor_copy',
+      'doc13_name_change',
+      'doc14_military',
+    ]);
+    expect(plan.docTypes.at(-1)).toMatchObject({ optional: true, enabled: true });
     expect(plan.docTypes[0]).toMatchObject({ covers_all: true, optional: true });
     expect(plan.docTypes[2].enabled).toBe(false);
     expect(plan.docSubitems.find((s) => s.title.startsWith('สลิป'))?.optional).toBe(true);
@@ -138,8 +147,8 @@ describe('buildMigrationPlan', () => {
         ],
       },
     });
-    // ไฟล์ของกลุ่ม personal อยู่ช่องหลักของบัตร (รวมเอกสารทหารที่แนบมาด้วย) / bank เข้าหัวข้อถูกช่อง
-    expect(p.files.map((f) => `${f.doc_key}|${f.subitem_title}`).sort()).toEqual(['doc10_bookbank|สำเนาเปิดบัญชี SCB', 'doc3_id_card|', 'doc3_id_card|']);
+    // บัตรประชาชน → ช่องหลักของบัตร / เอกสารทหารที่ฝากไว้ในเซลล์บัตร → เอกสารทหาร / bank → หัวข้อถูกช่อง
+    expect(p.files.map((f) => `${f.doc_key}|${f.subitem_title}`).sort()).toEqual(['doc10_bookbank|สำเนาเปิดบัญชี SCB', 'doc14_military|', 'doc3_id_card|']);
     expect(p.reviews.map((r) => `${r.doc_key}|${r.subitem_title}|${r.status}`).sort()).toEqual([
       'doc10_bookbank|สำเนาเปิดบัญชี SCB|pending_review',
       'doc3_id_card||approved',
