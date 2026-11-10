@@ -16,7 +16,7 @@
 | ย้ายข้อมูลจาก Google Sheets | ✅ `scripts/` |
 | กฎสถานะเอกสาร (ใช้ร่วมกันทุกหน้า) | ✅ `src/lib/docs/status.ts` |
 | LINE webhook (เมนู, รับไฟล์ผ่านแชท, ตรวจลายเซ็น) | ✅ `src/app/api/line/webhook` |
-| หน้าผู้สมัคร (LINE MINI App): ลงทะเบียน, PDPA, อัปโหลด, ดูสถานะ | ⬜ |
+| หน้าผู้สมัคร (LINE MINI App): ลงทะเบียน, PDPA, อัปโหลด, ดูสถานะ | ✅ `src/app/apply` + `src/app/api/apply` |
 | หน้าแอดมิน: Dashboard, ตรวจเอกสาร, แจ้งเริ่มงาน, สาขา, ผู้ใช้, ตั้งค่า | ⬜ |
 | แจ้งเตือนอัตโนมัติ (ใกล้ deadline, ติดตาม 3 วัน) ด้วย Vercel Cron | ⬜ |
 | ย้ายไฟล์จาก Google Drive เข้า Storage | ⬜ |
@@ -29,6 +29,9 @@ supabase/
   seed.sql                   ประเภทเอกสารตั้งต้น (สำหรับเครื่อง dev)
 src/
   app/api/line/webhook/      LINE webhook (ตอบ 200 ทันที แล้วประมวลผลด้วย after())
+  app/apply/                 หน้าผู้สมัคร (Endpoint URL ของ LINE MINI App)
+  app/api/apply/             API ของหน้าผู้สมัคร (session, register, pdpa, status, upload)
+  lib/apply/portal.ts        logic หน้าผู้สมัคร: ผูกบัญชี LINE, ลงทะเบียน, PDPA, อัปโหลด
   lib/docs/status.ts         กฎ "ส่งครบ / ต้องแก้ / อนุมัติ" — ที่เดียวในระบบ
   lib/line/                  ลายเซ็น, client, Flex Message, logic การสนทนา
   lib/repo/                  การเข้าถึงข้อมูล (interface + Supabase)
@@ -60,6 +63,11 @@ tests/                       vitest (รวมการรัน migration จ�
   ระบบใหม่เก็บเป็นแถวจึงไม่มีปัญหานี้ และสคริปต์ย้ายข้อมูลอ่านได้ทั้งสองแบบ
 - webhook ตรวจ `X-Line-Signature` แล้ว (Apps Script ทำไม่ได้)
 - ขนาดไฟล์ผ่านแชทไม่ถูกจำกัดที่ 2 MB อีกต่อไป (ตั้งได้ด้วย `MAX_UPLOAD_MB`)
+- **ปิดช่องยึดบัญชีด้วยเบอร์โทร**: ระบบเดิม "ไม่สามารถเข้า LINE เก่าได้" ให้ใครก็ได้ที่รู้เบอร์โทร
+  ผูก LINE ตัวเองเข้ากับบัญชีผู้สมัครคนอื่น และลงทะเบียนนอก LINE ด้วยเบอร์ที่มีอยู่จะได้ token ของคนนั้นไป
+  ระบบใหม่ผูกด้วยเบอร์ได้เฉพาะแถวที่ยังไม่มี LINE และต้องเปิดจาก LINE เท่านั้น — ย้ายบัญชี LINE ทำผ่านแอดมิน
+- บัญชี LINE ของผู้ที่เปิดหน้าเว็บมาจากการตรวจ ID token กับ LINE (ระบบเดิมเชื่อ userId ที่ browser ส่งมา)
+- ชนิดไฟล์ที่อัปโหลดตรวจจาก byte จริงของไฟล์ ไม่เชื่อนามสกุลหรือ Content-Type
 
 ## เริ่มต้น (เครื่อง dev)
 
@@ -94,9 +102,12 @@ LINE แนะนำให้แอปใหม่สร้างเป็น MI
    - **Developing** — ใช้ตอนพัฒนา เปิดได้เฉพาะ tester ที่เพิ่มไว้ใน channel
    - **Review** — ใช้เมื่อขอ verified (ต้องเป็น certified provider ผ่าน LINE for Business)
    - **Published** — ที่ผู้สมัครใช้จริง
-3. Endpoint URL ตั้งเป็น `https://<โดเมน>/apply` แล้วใส่ LIFF ID ใน `NEXT_PUBLIC_LIFF_ID`
+3. **Scopes ต้องเปิด `openid` และ `profile`** ทุก internal channel (Developing / Review / Published)
+   — หน้าผู้สมัครใช้ ID token ยืนยันว่าเป็นบัญชี LINE ไหน ถ้าไม่เปิด `openid`
+   ผู้สมัครที่เปิดจาก LINE จะเจอ "เปิดผ่าน LINE ไม่สำเร็จ" ทุกคน
+4. Endpoint URL ตั้งเป็น `https://<โดเมน>/apply` แล้วใส่ LIFF ID ใน `NEXT_PUBLIC_LIFF_ID`
    (เครื่อง dev ใช้ของ Developing, production บน Vercel ใช้ของ Published)
-4. ลิงก์ที่ระบบส่งให้ผู้สมัครเป็น `https://miniapp.line.me/<LIFF ID>?token=...`
+5. ลิงก์ที่ระบบส่งให้ผู้สมัครเป็น `https://miniapp.line.me/<LIFF ID>?token=...`
 
 ข้อจำกัดของ MINI App เทียบกับ LIFF ที่รู้แล้วว่าไม่กระทบระบบนี้: ใช้ได้เฉพาะขนาด Full, ซ่อนปุ่ม action ไม่ได้,
 1 channel มีเว็บได้แอปเดียว (หน้าแอดมินเป็นเว็บธรรมดา ไม่ได้เปิดใน LINE)
@@ -140,6 +151,12 @@ webhook ใหม่ย้ายเดี่ยวๆ ไม่ได้ เพ�
 4. ถ้ามีปัญหา: เปลี่ยน Webhook URL, Endpoint URL ของ LIFF เดิม และ Rich menu กลับเป็นของเดิมได้ทันที
 
 ## คำถามที่ต้องตรวจกับข้อมูลจริง
+
+- **ข้อความ PDPA ข้อ 4** ยังระบุ "Google Workspace" เป็นผู้ให้บริการ (ยกมาจากระบบเดิมทุกตัวอักษร)
+  ระบบใหม่เก็บข้อมูลที่ Supabase — ถ้า HR/ฝ่ายกฎหมายแก้ข้อความ ให้แก้ `src/lib/apply/pdpa.ts`
+  และเปลี่ยน `PDPA_VERSION` เพื่อขอความยินยอมใหม่
+- **เอกสารตัวอย่างตามบริษัท** (ปุ่มดาวน์โหลดแบบฟอร์มบนหน้าผู้สมัครของระบบเดิม) ยังไม่ได้ย้าย
+  — ไฟล์อยู่ใน Drive และผูกกับชีท Config
 
 - **หัวข้อย่อยใน DocConfig** บางรายการดูเหมือน "จุดที่ HR ต้องเช็ค" มากกว่า "ไฟล์ที่ต้องส่ง"
   เช่น สำเนาบัตรประชาชน → `เซ็นรับรอง`, `วันหมดอายุบัตร`

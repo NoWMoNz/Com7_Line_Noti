@@ -12,6 +12,27 @@ export interface SaveUploadInput {
   bytes: Uint8Array;
   mimeType: string;
   source: 'web' | 'line' | 'admin';
+  /**
+   * true (ค่าเริ่มต้น) = ไฟล์ใหม่แทนที่ไฟล์เดิมของช่องนี้
+   * false = เพิ่มต่อจากไฟล์ที่มี (ใช้กับรูปที่ 2, 3, ... ที่ส่งมาพร้อมกันในชุดเดียว)
+   */
+  replaceExisting?: boolean;
+}
+
+export interface ApplicantPatch {
+  name?: string;
+  phone?: string;
+  /** ผูก LINE — ใช้เฉพาะเมื่อแถวนี้ยังไม่มี line_user_id (ไม่เขียนทับของเดิม) */
+  bindLineUserId?: string;
+  /** บันทึกการยินยอม PDPA (เวลาปัจจุบัน + เวอร์ชัน + LINE ID ตอนกดยินยอม) */
+  pdpa?: { version: string; lineUserId: string | null };
+}
+
+export interface NewApplicantInput {
+  name: string;
+  phone: string;
+  lineUserId: string | null;
+  pdpa: { version: string; lineUserId: string | null };
 }
 
 export interface ActivityLogInput {
@@ -38,6 +59,11 @@ export interface NotificationLogInput {
 export interface Repo {
   findApplicantByLineId(lineUserId: string): Promise<Applicant | null>;
   createApplicantForLine(lineUserId: string): Promise<Applicant>;
+  findApplicantByToken(token: string): Promise<Applicant | null>;
+  /** เบอร์ในฐานข้อมูลถูกจัดรูปแบบเป็น 0xxxxxxxxx แล้ว (ตอนย้ายข้อมูล / ลงทะเบียน) */
+  findApplicantsByPhone(phone: string): Promise<Applicant[]>;
+  createApplicant(input: NewApplicantInput): Promise<Applicant>;
+  updateApplicant(id: string, patch: ApplicantPatch): Promise<Applicant>;
   /** ประเภทเอกสารทั้งหมด (รวมที่ปิด) พร้อมหัวข้อย่อย เรียงตาม sortOrder */
   getDocTypes(): Promise<DocType[]>;
   getDocState(applicantId: string): Promise<{ files: FileSlotRef[]; reviews: DocReview[] }>;

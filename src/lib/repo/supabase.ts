@@ -5,7 +5,9 @@ import type { ActivityLogInput, NotificationLogInput, PendingUpload, Repo, SaveU
 export const DOCS_BUCKET = 'applicant-docs';
 const DOC_TYPES_TTL_MS = 60_000;
 
-const APPLICANT_COLUMNS = 'id, code, name, phone, approved, line_user_id, access_token, required_doc_keys';
+// ต้องเป็น string literal เดียว (ห้ามต่อด้วย +) — supabase-js อ่าน type ของผลลัพธ์จากข้อความนี้
+const APPLICANT_COLUMNS =
+  'id, code, name, phone, approved, line_user_id, access_token, required_doc_keys, admin_feedback, onboard_notified_at, pdpa_version, pdpa_accepted_at';
 
 interface ApplicantRow {
   id: string;
@@ -16,6 +18,10 @@ interface ApplicantRow {
   line_user_id: string | null;
   access_token: string;
   required_doc_keys: string[] | null;
+  admin_feedback: string | null;
+  onboard_notified_at: string | null;
+  pdpa_version: string | null;
+  pdpa_accepted_at: string | null;
 }
 
 function toApplicant(r: ApplicantRow): Applicant {
@@ -28,6 +34,18 @@ function toApplicant(r: ApplicantRow): Applicant {
     lineUserId: r.line_user_id,
     accessToken: r.access_token,
     requiredDocKeys: r.required_doc_keys,
+    adminFeedback: r.admin_feedback ?? '',
+    onboardNotified: !!r.onboard_notified_at,
+    pdpaVersion: r.pdpa_version,
+    pdpaAcceptedAt: r.pdpa_accepted_at,
+  };
+}
+
+function pdpaColumns(pdpa: { version: string; lineUserId: string | null }) {
+  return {
+    pdpa_version: pdpa.version,
+    pdpa_accepted_at: new Date().toISOString(),
+    pdpa_line_user_id: pdpa.lineUserId,
   };
 }
 
@@ -62,6 +80,56 @@ export function createSupabaseRepo(db: SupabaseClient): Repo {
         .select(APPLICANT_COLUMNS)
         .single();
       return toApplicant(check(res, 'createApplicantForLine') as ApplicantRow);
+    },
+
+    async findApplicantByToken(token) {
+      const res = await db.from('applicants').select(APPLICANT_COLUMNS).eq('access_token', token).maybeSingle();
+      const row = check(res, 'findApplicantByToken') as ApplicantRow | null;
+      return row ? toApplicant(row) : null;
+    },
+
+    async findApplicantsByPhone(phone) {
+      const res = await db
+        .from('applicants')
+        .select(APPLICANT_COLUMNS)
+        .eq('phone', phone)
+        .order('created_at', { ascending: false })
+        .limit(5);
+      return (check(res, 'findApplicantsByPhone') as ApplicantRow[]).map(toApplicant);
+    },
+
+    async createApplicant(input) {
+      const res = await db
+        .from('applicants')
+        .insert({
+          name: input.name,
+          phone: input.phone,
+          line_user_id: input.lineUserId,
+          ...pdpaColumns(input.pdpa),
+        })
+        .select(APPLICANT_COLUMNS)
+        .single();
+      return toApplicant(check(res, 'createApplicant') as ApplicantRow);
+    },
+
+    async updateApplicant(id, patch) {
+      const values: Record<string, unknown> = {};
+      if (patch.name !== undefined) values.name = patch.name;
+      if (patch.phone !== undefined) values.phone = patch.phone;
+      if (patch.pdpa) Object.assign(values, pdpaColumns(patch.pdpa));
+
+      if (Object.keys(values).length > 0) {
+        check(await db.from('applicants').update(values).eq('id', id), 'updateApplicant');
+      }
+      if (patch.bindLineUserId) {
+        // ผูกเฉพาะแถวที่ยังไม่มี LINE — กันเขียนทับบัญชี LINE ของคนอื่น
+        check(
+          await db.from('applicants').update({ line_user_id: patch.bindLineUserId }).eq('id', id).is('line_user_id', null),
+          'bind line_user_id',
+        );
+      }
+      const res = await db.from('applicants').select(APPLICANT_COLUMNS).eq('id', id).single();
+      return toApplicant(check(res, 'updateApplicant reload') as ApplicantRow);
     },
 
     async getDocTypes() {
@@ -152,7 +220,7 @@ export function createSupabaseRepo(db: SupabaseClient): Repo {
     },
 
     async saveUploadedFile(input: SaveUploadInput) {
-      const { applicant, docKey, subitemTitle, bytes, mimeType, source } = input;
+      const { applicant, docKey, subitemTitle, bytes, mimeType, source, replaceExisting = true } = input;
       const ext = EXT[mimeType] ?? 'bin';
       const path = `${applicant.id}/${docKey}/${crypto.randomUUID()}.${ext}`;
 
@@ -178,18 +246,20 @@ export function createSupabaseRepo(db: SupabaseClient): Repo {
 
       // ไฟล์ใหม่แทนที่ไฟล์เก่าของช่องเดียวกัน (เหมือนระบบเดิม) — ไฟล์เก่ายังเก็บไว้เป็นประวัติ
       // เงื่อนไข created_at <= ของไฟล์ใหม่ กันกรณีอัปโหลดพร้อมกัน 2 ไฟล์แล้วไฟล์ที่ใหม่กว่าถูกปิดทิ้ง
-      check(
-        await db
-          .from('applicant_files')
-          .update({ is_current: false })
-          .eq('applicant_id', applicant.id)
-          .eq('doc_key', docKey)
-          .eq('subitem_title', subitemTitle)
-          .eq('is_current', true)
-          .neq('id', inserted.id)
-          .lte('created_at', inserted.created_at),
-        'retire old files',
-      );
+      if (replaceExisting) {
+        check(
+          await db
+            .from('applicant_files')
+            .update({ is_current: false })
+            .eq('applicant_id', applicant.id)
+            .eq('doc_key', docKey)
+            .eq('subitem_title', subitemTitle)
+            .eq('is_current', true)
+            .neq('id', inserted.id)
+            .lte('created_at', inserted.created_at),
+          'retire old files',
+        );
+      }
 
       const now = new Date().toISOString();
       const reviewRows = [{ applicant_id: applicant.id, doc_key: docKey, subitem_title: '' }];

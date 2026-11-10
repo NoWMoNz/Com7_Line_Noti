@@ -1,7 +1,7 @@
 const PHASES = [
   { done: true, title: 'ฐานข้อมูล + ย้ายข้อมูลจาก Google Sheets', detail: 'schema, สคริปต์ย้ายข้อมูล, กฎสถานะเอกสาร' },
   { done: true, title: 'LINE webhook', detail: 'เมนูเอกสาร, รับไฟล์ผ่านแชท, ตรวจลายเซ็น LINE' },
-  { done: false, title: 'หน้าผู้สมัคร (LINE MINI App)', detail: 'ลงทะเบียน, PDPA, อัปโหลดเอกสาร, ดูสถานะ' },
+  { done: true, title: 'หน้าผู้สมัคร (LINE MINI App)', detail: 'ลงทะเบียน, PDPA, อัปโหลดเอกสาร, ดูสถานะ' },
   { done: false, title: 'หน้าแอดมิน', detail: 'Dashboard, ตรวจเอกสาร, แจ้งเริ่มงาน, สาขา, ผู้ใช้' },
   { done: false, title: 'งานตามเวลา + ย้ายไฟล์จาก Drive', detail: 'แจ้งเตือนอัตโนมัติ, ติดตาม 3 วัน, ปิดระบบเดิม' },
 ];

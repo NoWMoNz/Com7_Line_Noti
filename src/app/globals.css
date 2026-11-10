@@ -2,28 +2,55 @@
 
 :root {
   --background: #ffffff;
+  --surface: #f5f8f4;
   --foreground: #1e2a1c;
   --muted: #5f6e5c;
   --line: #e3eae1;
   --brand: #2f9a2a;
+  --brand-strong: #247a20;
+  --brand-tint: #e8f5e7;
+  --danger: #c8372f;
+  --danger-tint: #fdecea;
+  --warn: #a96a00;
+  --warn-tint: #fff4dc;
+  --info: #2563b8;
+  --info-tint: #eaf1fc;
 }
 
 @theme inline {
   --color-background: var(--background);
+  --color-surface: var(--surface);
   --color-foreground: var(--foreground);
   --color-muted: var(--muted);
   --color-line: var(--line);
   --color-brand: var(--brand);
+  --color-brand-strong: var(--brand-strong);
+  --color-brand-tint: var(--brand-tint);
+  --color-danger: var(--danger);
+  --color-danger-tint: var(--danger-tint);
+  --color-warn: var(--warn);
+  --color-warn-tint: var(--warn-tint);
+  --color-info: var(--info);
+  --color-info-tint: var(--info-tint);
   --font-sans: var(--font-noto-thai), system-ui, sans-serif;
 }
 
 @media (prefers-color-scheme: dark) {
   :root {
     --background: #0f140e;
+    --surface: #161d15;
     --foreground: #e6ede4;
     --muted: #9aa897;
     --line: #2a3528;
     --brand: #4cbb46;
+    --brand-strong: #6fd06a;
+    --brand-tint: #1c2e1b;
+    --danger: #f07a72;
+    --danger-tint: #3a1d1b;
+    --warn: #f0b84e;
+    --warn-tint: #352a14;
+    --info: #7fb0f0;
+    --info-tint: #182638;
   }
 }
 

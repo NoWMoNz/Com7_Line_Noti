@@ -41,4 +41,10 @@ export interface Applicant {
   accessToken: string;
   /** ชุดเอกสารที่ล็อกไว้ (snapshot) — null = ใช้ชุดที่เปิดใช้งานปัจจุบัน */
   requiredDocKeys: string[] | null;
+  /** ข้อความถึงผู้สมัครจากแอดมิน (แสดงบนหน้าผู้สมัคร) */
+  adminFeedback: string;
+  /** แอดมินแจ้งเริ่มงานแล้ว → ถือว่าเอกสารครบ */
+  onboardNotified: boolean;
+  pdpaVersion: string | null;
+  pdpaAcceptedAt: string | null;
 }
