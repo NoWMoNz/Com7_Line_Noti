@@ -146,6 +146,23 @@ LINE แนะนำให้แอปใหม่สร้างเป็น MI
 > ⚠️ ใช้ `@line/liff` **v2.32.0 ขึ้นไป** — LINE จะจำกัด v2.20.0–v2.31.0 (มีช่องโหว่) ประมาณ 24 พ.ย. 2026
 > ระบบเดิมบน Apps Script ก็โดนด้วยถ้ายังใช้เวอร์ชันในช่วงนั้น
 
+## Deploy (Vercel)
+
+ตอนนี้ deploy ที่ทีม Vercel `kt-oll-tz` → โปรเจกต์ `com7-recruit-web` → **https://com7-recruit-web.vercel.app**
+(ใช้กับ LINE channel ทดสอบ + Supabase `line-noti`) — region `sin1` (สิงคโปร์ ที่เดียวกับ Supabase)
+
+```bash
+npm i -g vercel && vercel login      # ครั้งแรก
+vercel deploy --prod                 # deploy จากเครื่อง (.vercelignore กันไฟล์ .env / export ไม่ให้อัปโหลด)
+vercel env ls production             # ดูตัวแปร (ค่าลับตั้งเป็น sensitive อ่านกลับไม่ได้)
+```
+
+- `CRON_SECRET` สุ่มตอนตั้งค่าและเก็บไว้บน Vercel เท่านั้น — ต้องการค่าใหม่ให้ `vercel env rm/add` แล้ว deploy ใหม่
+- Webhook URL ของ LINE: `https://com7-recruit-web.vercel.app/api/line/webhook`
+- Endpoint URL ของ MINI App: `https://com7-recruit-web.vercel.app/apply`
+- หน้าแอดมิน: `https://com7-recruit-web.vercel.app/admin` (บัญชีเดียวกับบนเครื่อง เพราะใช้ Supabase เดียวกัน)
+- ตอนเปิดใช้จริง ควรแยกโปรเจกต์ Vercel/Supabase ของจริงออกจากชุดทดสอบนี้
+
 ## ย้ายข้อมูลจาก Google Sheets
 
 1. เปิดโปรเจกต์ Apps Script เดิม → เพิ่มไฟล์ใหม่ → วางเนื้อหา `scripts/gas/ExportForMigration.gs`
