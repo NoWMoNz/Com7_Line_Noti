@@ -1,6 +1,6 @@
 import type { SupabaseClient } from '@supabase/supabase-js';
 import type { Applicant, DocReview, DocType, FileSlotRef, ReviewStatus } from '@/lib/docs/types';
-import type { ActivityLogInput, NotificationLogInput, PendingUpload, Repo, SaveUploadInput } from './types';
+import type { ActivityLogInput, NotificationLogInput, Repo, SaveUploadInput } from './types';
 
 export const DOCS_BUCKET = 'applicant-docs';
 const DOC_TYPES_TTL_MS = 60_000;
@@ -72,16 +72,6 @@ export function createSupabaseRepo(db: SupabaseClient): Repo {
       return row ? toApplicant(row) : null;
     },
 
-    async createApplicantForLine(lineUserId) {
-      // upsert กันกรณี LINE ส่ง event ซ้ำพร้อมกัน (line_user_id เป็น unique)
-      const res = await db
-        .from('applicants')
-        .upsert({ line_user_id: lineUserId }, { onConflict: 'line_user_id', ignoreDuplicates: false })
-        .select(APPLICANT_COLUMNS)
-        .single();
-      return toApplicant(check(res, 'createApplicantForLine') as ApplicantRow);
-    },
-
     async findApplicantByToken(token) {
       const res = await db.from('applicants').select(APPLICANT_COLUMNS).eq('access_token', token).maybeSingle();
       const row = check(res, 'findApplicantByToken') as ApplicantRow | null;
@@ -147,7 +137,7 @@ export function createSupabaseRepo(db: SupabaseClient): Repo {
       if (docTypesCache && Date.now() - docTypesCache.at < DOC_TYPES_TTL_MS) return docTypesCache.value;
       const res = await db
         .from('doc_types')
-        .select('key, label, description, sort_order, enabled, optional, covers_all, doc_subitems(title, sort_order, optional)')
+        .select('key, label, description, sort_order, enabled, optional, covers_all, doc_subitems(title, sort_order, optional, kind)')
         .order('sort_order');
       const rows = check(res, 'getDocTypes') as Array<{
         key: string;
@@ -157,7 +147,7 @@ export function createSupabaseRepo(db: SupabaseClient): Repo {
         enabled: boolean;
         optional: boolean;
         covers_all: boolean;
-        doc_subitems: Array<{ title: string; sort_order: number; optional: boolean }>;
+        doc_subitems: Array<{ title: string; sort_order: number; optional: boolean; kind: 'file' | 'check' }>;
       }>;
       const value: DocType[] = rows.map((r) => ({
         key: r.key,
@@ -168,8 +158,13 @@ export function createSupabaseRepo(db: SupabaseClient): Repo {
         optional: r.optional,
         coversAll: r.covers_all,
         subitems: [...(r.doc_subitems ?? [])]
+          .filter((s) => s.kind !== 'check')
           .sort((a, b) => a.sort_order - b.sort_order)
           .map((s) => ({ title: s.title, optional: s.optional })),
+        checks: [...(r.doc_subitems ?? [])]
+          .filter((s) => s.kind === 'check')
+          .sort((a, b) => a.sort_order - b.sort_order)
+          .map((s) => s.title),
       }));
       docTypesCache = { at: Date.now(), value };
       return value;
@@ -203,31 +198,6 @@ export function createSupabaseRepo(db: SupabaseClient): Repo {
         }),
       );
       return { files, reviews };
-    },
-
-    async setPendingUpload(lineUserId, pending, ttlSeconds) {
-      const res = await db.from('line_pending_uploads').upsert({
-        line_user_id: lineUserId,
-        doc_key: pending.docKey,
-        subitem_title: pending.subitemTitle,
-        expires_at: new Date(Date.now() + ttlSeconds * 1000).toISOString(),
-      });
-      check(res, 'setPendingUpload');
-    },
-
-    async getPendingUpload(lineUserId): Promise<PendingUpload | null> {
-      const res = await db
-        .from('line_pending_uploads')
-        .select('doc_key, subitem_title, expires_at')
-        .eq('line_user_id', lineUserId)
-        .gt('expires_at', new Date().toISOString())
-        .maybeSingle();
-      const row = check(res, 'getPendingUpload') as { doc_key: string; subitem_title: string } | null;
-      return row ? { docKey: row.doc_key, subitemTitle: row.subitem_title } : null;
-    },
-
-    async clearPendingUpload(lineUserId) {
-      check(await db.from('line_pending_uploads').delete().eq('line_user_id', lineUserId), 'clearPendingUpload');
     },
 
     async saveUploadedFile(input: SaveUploadInput) {

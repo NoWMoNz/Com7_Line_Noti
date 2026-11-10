@@ -38,3 +38,6 @@ insert into doc_subitems (doc_key, title, sort_order, optional) values
   ('doc11_guarantor_copy', 'สลิปเงินเดือน (ถ้ามี)', 2, true),
   ('doc11_guarantor_copy', 'บัตรข้าราชการ (ถ้ามี)', 3, true)
 on conflict do nothing;
+
+-- หัวข้อที่เป็นจุดตรวจของ HR (ไม่ใช่ช่องอัปโหลด) — ดู migrations/0004_doc_checks.sql
+select convert_check_subitems();

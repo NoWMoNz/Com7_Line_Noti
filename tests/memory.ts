@@ -1,7 +1,7 @@
 /** ฐานข้อมูลและ LINE จำลองในหน่วยความจำ — ใช้ร่วมกันใน test ของ webhook และหน้าผู้สมัคร */
 import type { Applicant, DocReview, DocType, FileSlotRef } from '@/lib/docs/types';
 import type { LineApi, LineMessage } from '@/lib/line/types';
-import type { PendingUpload, Repo, SaveUploadInput } from '@/lib/repo/types';
+import type { Repo, SaveUploadInput } from '@/lib/repo/types';
 import { DOCS } from './fixtures';
 
 export function makeApplicant(n: number, extra: Partial<Applicant> = {}): Applicant {
@@ -26,7 +26,6 @@ export function createMemoryRepo(docs: DocType[] = DOCS) {
   const applicants: Applicant[] = [];
   const files: Array<FileSlotRef & { applicantId: string; current: boolean; mimeType: string; size: number }> = [];
   const reviews: Array<DocReview & { applicantId: string }> = [];
-  const pending = new Map<string, PendingUpload>();
   const activity: string[] = [];
   const notifications: string[] = [];
   const completed = new Map<string, string[]>();
@@ -45,9 +44,6 @@ export function createMemoryRepo(docs: DocType[] = DOCS) {
   const repo: Repo = {
     async findApplicantByLineId(id) {
       return applicants.find((a) => a.lineUserId === id) ?? null;
-    },
-    async createApplicantForLine(id) {
-      return add({ lineUserId: id });
     },
     async findApplicantByToken(token) {
       return applicants.find((a) => a.accessToken === token) ?? null;
@@ -92,15 +88,6 @@ export function createMemoryRepo(docs: DocType[] = DOCS) {
         reviews: reviews.filter((r) => r.applicantId === applicantId),
       };
     },
-    async setPendingUpload(uid, p) {
-      pending.set(uid, p);
-    },
-    async getPendingUpload(uid) {
-      return pending.get(uid) ?? null;
-    },
-    async clearPendingUpload(uid) {
-      pending.delete(uid);
-    },
     async saveUploadedFile(input: SaveUploadInput) {
       const { applicant, docKey, subitemTitle, replaceExisting = true } = input;
       if (replaceExisting) {
@@ -137,7 +124,7 @@ export function createMemoryRepo(docs: DocType[] = DOCS) {
     reviews.push({ applicantId, docKey, subitemTitle, status, reason, reviewedBy: 'HR', updatedAt: null });
   };
 
-  return { repo, applicants, files, reviews, pending, activity, notifications, completed, add, review };
+  return { repo, applicants, files, reviews, activity, notifications, completed, add, review };
 }
 
 export function createFakeLine(contentType = 'image/jpeg', size = 1000) {

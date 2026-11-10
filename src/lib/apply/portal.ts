@@ -13,7 +13,7 @@
 import { requiredDocsFor, summarizeApplicantDocs, type DocStatus } from '@/lib/docs/status';
 import type { Applicant, DocReview, DocType, FileSlotRef } from '@/lib/docs/types';
 import { buildDocsCompleteFlex, buildNotifyFlex } from '@/lib/line/flex';
-import { buildPersonalLink, type HandlerConfig } from '@/lib/line/handler';
+import { buildAppLink, buildPersonalLink, type HandlerConfig } from '@/lib/line/handler';
 import type { LineApi } from '@/lib/line/types';
 import type { Repo } from '@/lib/repo/types';
 import { PDPA_VERSION } from './pdpa';
@@ -285,7 +285,7 @@ export async function register(
 async function pushWelcome(applicant: Applicant, deps: PortalDeps) {
   const { line, repo, config } = deps;
   if (!applicant.lineUserId) return;
-  const link = buildPersonalLink(config, applicant.accessToken);
+  const link = buildAppLink(config);
   const ok = await line
     .push(applicant.lineUserId, [
       {

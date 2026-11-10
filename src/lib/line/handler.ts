@@ -1,28 +1,20 @@
 /**
- * Logic การสนทนาของ LINE OA — ย้ายมาจาก handleLineEvent_ (LineWebhook.gs) โดยคงพฤติกรรมเดิม:
+ * การสนทนาของ LINE OA — แชทมีหน้าที่แค่ "ชี้ทาง" ไปหน้าส่งเอกสาร (LINE MINI App)
  *
- *  - พิมพ์「ลงทะเบียนยืนยันตัวตน」→ ส่งลิงก์ลงทะเบียน (สร้างผู้สมัครใหม่ถ้ายังไม่มี)
- *  - พิมพ์「สถานะ / ตรวจสอบ / อัปโหลด / เมนู」→ สรุป X จาก Y + carousel เอกสารที่ยังขาด/ตีกลับ
- *  - postback select_doc / select_subitem → จำว่ากำลังรอไฟล์ของเอกสารไหน (10 นาที)
- *  - ส่งรูป/PDF → บันทึกเป็นเอกสารที่เลือกไว้ แล้วตอบยืนยัน + แจ้งเมื่อครบ
- *  - คนที่ยังไม่มีบัญชี / ยังไม่เลือกเอกสาร → เงียบ ไม่ตอบ (ตาม requirement เดิม)
+ *  - 「ลงทะเบียน ยืนยันตัวตน」→ การ์ดเปิดหน้าลงทะเบียน (หรือแจ้งว่าอนุมัติแล้ว / รออนุมัติ)
+ *  - 「สถานะ / ตรวจสอบ / อัปโหลด / เมนู」→ สรุปส่งแล้ว X จาก Y + รายการที่ยังขาด + ปุ่มเปิดหน้าส่งเอกสาร
+ *  - ผู้สมัครส่งรูป/ไฟล์เข้ามาในแชท → แจ้งให้ส่งผ่านหน้าส่งเอกสาร (ไม่รับไฟล์ทางแชทแล้ว)
+ *  - คนที่ยังไม่มีบัญชีส่งรูป / ข้อความอื่น → เงียบ
  *
- * แก้จากระบบเดิม:
- *  - ไฟล์จากแชทของเอกสารหลายหน้าถูกนับครบถูกต้อง (เดิม prefix "application::" ไม่ตรงกับที่ Dashboard ค้นหา)
- *  - ใช้กฎสถานะชุดเดียวกับทุกหน้า (lib/docs/status.ts)
- *  - ขยายขนาดไฟล์สูงสุดจาก 2 MB (ข้อจำกัดของ Apps Script) เป็นค่าที่ตั้งได้
+ * ต่างจากระบบเดิม (LineWebhook.gs):
+ *  - เลิกรับเอกสารทางแชท — เดิมต้องเลือกเมนู 2 ชั้นแล้วส่งรูปภายใน 10 นาที ส่งผิดช่องง่าย
+ *  - กด「ลงทะเบียน」ไม่สร้างแถวผู้สมัครเปล่าอีก — สร้างตอนกรอกฟอร์มในหน้าลงทะเบียนเสร็จ
+ *  - ลิงก์ไม่แนบ token — หน้าส่งเอกสารรู้ว่าเป็นใครจากบัญชี LINE (ตรวจ ID token กับ LINE)
  */
-import { requiredDocsFor, summarizeApplicantDocs, type ApplicantDocSummary } from '@/lib/docs/status';
-import type { Applicant, DocType } from '@/lib/docs/types';
+import { requiredDocsFor, summarizeApplicantDocs } from '@/lib/docs/status';
+import type { Applicant } from '@/lib/docs/types';
 import type { Repo } from '@/lib/repo/types';
-import {
-  buildDocDetail,
-  buildDocMenuCarousel,
-  buildDocsCompleteFlex,
-  buildPendingApprovalFlex,
-  buildRegistrationFlex,
-  buildSubitemMenu,
-} from './flex';
+import { buildDocsCompleteFlex, buildOpenAppFlex, buildPendingApprovalFlex, buildRegistrationFlex } from './flex';
 import type { LineApi, LineEvent, LineMessage } from './types';
 
 export interface HandlerConfig {
@@ -38,15 +30,8 @@ export interface HandlerDeps {
   config: HandlerConfig;
 }
 
-const PENDING_TTL_SECONDS = 600;
 const REGISTER_RE = /ลงทะเบียน\s*ยืนยันตัวตน/;
 const MENU_RE = /สถานะ|ตรวจสอบ|อัปโหลด|เมนู/;
-const ALLOWED_MIME: Record<string, string> = {
-  'image/jpeg': 'jpg',
-  'image/png': 'png',
-  'image/webp': 'webp',
-  'application/pdf': 'pdf',
-};
 
 const text = (t: string): LineMessage => ({ type: 'text', text: t });
 
@@ -67,15 +52,26 @@ export function parseQuery(str: string): Record<string, string> {
 }
 
 /**
- * ลิงก์ส่วนตัวของผู้สมัคร
- * - มี LIFF ID ของ LINE MINI App → https://miniapp.line.me/{liffId}?token=...
- *   (Endpoint URL ของ MINI App ตั้งเป็น https://<โดเมน>/apply LINE จะเปิดหน้านั้นพร้อม query เดิม)
+ * ลิงก์หน้าส่งเอกสาร
+ * - มี LIFF ID → https://miniapp.line.me/{liffId} (+ ?doc= เปิดเอกสารนั้นทันที / ?token= สำหรับลิงก์ส่วนตัว)
+ *   Endpoint URL ของ MINI App ตั้งเป็น https://<โดเมน>/apply — LINE เปิดหน้านั้นพร้อม query เดิม
  * - ไม่มี → เปิดหน้าเว็บตรงๆ (ใช้ตอน dev นอก LINE)
  */
-export function buildPersonalLink(config: HandlerConfig, token: string): string {
-  if (config.liffId) return `https://miniapp.line.me/${config.liffId}?token=${encodeURIComponent(token)}`;
-  return `${config.appBaseUrl.replace(/\/$/, '')}/apply?token=${encodeURIComponent(token)}`;
+export function buildAppLink(config: HandlerConfig, opts: { token?: string | null; doc?: string } = {}): string {
+  const q = new URLSearchParams();
+  if (opts.token) q.set('token', opts.token);
+  if (opts.doc) q.set('doc', opts.doc);
+  const qs = q.toString() ? `?${q}` : '';
+  if (config.liffId) return `https://miniapp.line.me/${config.liffId}${qs}`;
+  return `${config.appBaseUrl.replace(/\/$/, '')}/apply${qs}`;
 }
+
+/** ลิงก์ส่วนตัว (มี token) — ใช้กับคนที่เปิดนอก LINE เช่น ผ่านคอมพิวเตอร์ */
+export function buildPersonalLink(config: HandlerConfig, token: string): string {
+  return buildAppLink(config, { token });
+}
+
+const profileComplete = (a: Applicant) => !!a.name.trim() && !!(a.phone ?? '').trim();
 
 export async function handleLineEvent(event: LineEvent, deps: HandlerDeps): Promise<void> {
   const lineUserId = event.source?.userId;
@@ -84,68 +80,75 @@ export async function handleLineEvent(event: LineEvent, deps: HandlerDeps): Prom
 
   if (event.type === 'message' && event.message?.type === 'text') {
     const msg = (event.message.text ?? '').trim();
-    if (REGISTER_RE.test(msg)) return replyRegistrationLink(replyToken, lineUserId, deps);
-    if (MENU_RE.test(msg)) return replyDocMenu(replyToken, lineUserId, deps);
+    if (REGISTER_RE.test(msg)) return replyRegistration(replyToken, lineUserId, deps);
+    if (MENU_RE.test(msg)) return replyStatus(replyToken, lineUserId, deps);
     return;
   }
 
+  // การ์ดเก่าในแชท (ระบบเดิม) มีปุ่ม postback open_menu / select_doc → ตอบสถานะ + ปุ่มเปิดหน้าส่งเอกสาร
   if (event.type === 'postback' && event.postback) {
-    return handlePostback(replyToken, lineUserId, parseQuery(event.postback.data), deps);
+    const action = parseQuery(event.postback.data).action;
+    if (action === 'open_menu' || action === 'select_doc' || action === 'select_subitem' || action === 'view_detail') {
+      return replyStatus(replyToken, lineUserId, deps);
+    }
+    return;
   }
 
   if (event.type === 'message' && (event.message?.type === 'image' || event.message?.type === 'file')) {
-    return handleIncomingFile(replyToken, lineUserId, event.message.id, deps);
+    const applicant = await deps.repo.findApplicantByLineId(lineUserId);
+    if (!applicant) return; // ยังไม่มีบัญชี → เงียบ
+    await deps.line.reply(replyToken, [
+      {
+        type: 'flex',
+        altText: 'กรุณาส่งเอกสารผ่านหน้าส่งเอกสาร',
+        contents: buildOpenAppFlex({
+          title: 'ส่งเอกสารผ่านหน้าส่งเอกสาร',
+          greeting: 'ระบบไม่รับเอกสารทางแชทแล้วค่ะ',
+          note: 'กดปุ่มด้านล่าง แล้วเลือกเอกสารที่ต้องการส่ง ถ่ายรูปหรือแนบไฟล์ได้เลย ระบบจะบันทึกให้ตรงช่อง',
+          url: buildAppLink(deps.config),
+          logoUrl: deps.config.logoUrl,
+        }),
+      },
+    ]);
   }
   // follow / unfollow / อื่นๆ → ไม่ตอบ (ตามระบบเดิม)
 }
 
-// ---------------------------------------------------------------------------
-
-interface ApplicantContext {
-  applicant: Applicant;
-  allDocs: DocType[];
-  summary: ApplicantDocSummary;
-}
-
-async function loadContext(applicant: Applicant, repo: Repo): Promise<ApplicantContext> {
-  const [allDocs, state] = await Promise.all([repo.getDocTypes(), repo.getDocState(applicant.id)]);
-  const docs = requiredDocsFor(applicant.requiredDocKeys, allDocs);
-  return { applicant, allDocs, summary: summarizeApplicantDocs(docs, state.files, state.reviews) };
-}
-
-async function replyRegistrationLink(replyToken: string, lineUserId: string, deps: HandlerDeps) {
+async function replyRegistration(replyToken: string, lineUserId: string, deps: HandlerDeps) {
   const { repo, line, config } = deps;
-  let applicant = await repo.findApplicantByLineId(lineUserId);
-  if (!applicant) {
-    applicant = await repo.createApplicantForLine(lineUserId);
-  } else if (applicant.approved) {
+  const applicant = await repo.findApplicantByLineId(lineUserId);
+  if (applicant?.approved) {
     await line.reply(replyToken, [
-      text(
-        (applicant.name ? `คุณ${applicant.name} ` : '') +
-          'ลงทะเบียนและได้รับการอนุมัติแล้วค่ะ\nพิมพ์「เมนู」หรือ「สถานะ」เพื่อแนบเอกสารได้เลย',
-      ),
+      text((applicant.name ? `คุณ${applicant.name} ` : '') + 'ลงทะเบียนและได้รับการอนุมัติแล้วค่ะ\nพิมพ์「สถานะ」เพื่อดูเอกสารที่ยังต้องส่ง'),
     ]);
     return;
   }
-  const url = buildPersonalLink(config, applicant.accessToken);
+  if (applicant && profileComplete(applicant)) {
+    await line.reply(replyToken, [
+      { type: 'flex', altText: 'บัญชีของคุณรอการอนุมัติ', contents: buildPendingApprovalFlex(applicant.name, config.logoUrl) },
+    ]);
+    return;
+  }
+  // ยังไม่ลงทะเบียน (หรือกรอกไม่ครบ) → ไปหน้าลงทะเบียน ไม่สร้างข้อมูลจนกว่าจะกรอกเสร็จ
   await line.reply(replyToken, [
-    { type: 'flex', altText: 'ลิงก์ลงทะเบียนสมัครงาน', contents: buildRegistrationFlex(url, config.logoUrl) },
+    { type: 'flex', altText: 'ลิงก์ลงทะเบียนสมัครงาน', contents: buildRegistrationFlex(buildAppLink(config), config.logoUrl) },
   ]);
 }
 
-async function replyDocMenu(replyToken: string, lineUserId: string, deps: HandlerDeps) {
+async function replyStatus(replyToken: string, lineUserId: string, deps: HandlerDeps) {
   const { repo, line, config } = deps;
   const applicant = await repo.findApplicantByLineId(lineUserId);
-  if (!applicant) return; // ยังไม่ลงทะเบียน → เงียบ
+  if (!applicant || !profileComplete(applicant)) return replyRegistration(replyToken, lineUserId, deps);
   if (!applicant.approved) {
     await line.reply(replyToken, [
-      text('บัญชีของคุณยังไม่ได้รับการอนุมัติจากเจ้าหน้าที่ กรุณารอการอนุมัติก่อนแนบเอกสารนะครับ'),
+      { type: 'flex', altText: 'บัญชีของคุณรอการอนุมัติ', contents: buildPendingApprovalFlex(applicant.name, config.logoUrl) },
     ]);
     return;
   }
 
-  const { summary } = await loadContext(applicant, repo);
-  if (summary.allSatisfied) {
+  const [allDocs, state] = await Promise.all([repo.getDocTypes(), repo.getDocState(applicant.id)]);
+  const summary = summarizeApplicantDocs(requiredDocsFor(applicant.requiredDocKeys, allDocs), state.files, state.reviews);
+  if (summary.allSatisfied || applicant.onboardNotified) {
     await line.reply(replyToken, [
       {
         type: 'flex',
@@ -156,169 +159,18 @@ async function replyDocMenu(replyToken: string, lineUserId: string, deps: Handle
     return;
   }
 
-  const remaining = summary.actionable.length;
+  const items = summary.actionable.map((s) => (s.state === 'rejected' ? `${s.doc.label} (ต้องแก้ไข)` : s.doc.label));
   await line.reply(replyToken, [
-    text(
-      `📋 สถานะเอกสารของคุณ\nส่งแล้ว ${summary.satisfiedCount} จาก ${summary.total} รายการ (เหลืออีก ${remaining} รายการ)\n\nกรุณาเลือกรายการที่ต้องการแนบด้านล่างนี้ค่ะ`,
-    ),
     {
       type: 'flex',
-      altText: `เลือกเอกสารที่ต้องการแนบ (${remaining} รายการ)`,
-      contents: buildDocMenuCarousel(summary.actionable, summary.docs),
+      altText: `ส่งแล้ว ${summary.satisfiedCount} จาก ${summary.total} รายการ`,
+      contents: buildOpenAppFlex({
+        title: 'สถานะเอกสารของคุณ',
+        greeting: `ส่งแล้ว ${summary.satisfiedCount} จาก ${summary.total} รายการ`,
+        items,
+        url: buildAppLink(config),
+        logoUrl: config.logoUrl,
+      }),
     },
   ]);
-}
-
-async function handlePostback(
-  replyToken: string,
-  lineUserId: string,
-  data: Record<string, string>,
-  deps: HandlerDeps,
-) {
-  const { repo, line, config } = deps;
-
-  if (data.action === 'open_menu') return replyDocMenu(replyToken, lineUserId, deps);
-
-  const applicant = await repo.findApplicantByLineId(lineUserId);
-  if (!applicant) return; // ยังไม่มีบัญชี → เงียบ
-
-  if (data.action === 'select_doc' || data.action === 'select_subitem' || data.action === 'view_detail') {
-    if (!applicant.approved) {
-      await line.reply(replyToken, [
-        {
-          type: 'flex',
-          altText: 'บัญชีของคุณยังไม่ได้รับการอนุมัติ',
-          contents: buildPendingApprovalFlex(applicant.name, config.logoUrl),
-        },
-      ]);
-      return;
-    }
-
-    const ctx = await loadContext(applicant, repo);
-    const status = ctx.summary.docs.find((s) => s.doc.key === data.docKey);
-    const doc = status?.doc ?? ctx.allDocs.find((d) => d.key === data.docKey && d.enabled);
-    if (!doc) {
-      await line.reply(replyToken, [
-        text('ไม่พบประเภทเอกสารนี้ในระบบ หรือถูกปิดการใช้งานแล้ว กรุณาพิมพ์「เมนู」เพื่อเลือกใหม่อีกครั้ง'),
-      ]);
-      return;
-    }
-
-    if (data.action === 'view_detail') {
-      if (status) {
-        await line.reply(replyToken, [
-          { type: 'flex', altText: `${doc.label} - รายละเอียด`, contents: buildDocDetail(status) },
-        ]);
-      }
-      return;
-    }
-
-    if (data.action === 'select_doc' && status && doc.subitems.length > 0) {
-      await line.reply(replyToken, [
-        { type: 'flex', altText: `${doc.label} — เลือกไฟล์ย่อย`, contents: buildSubitemMenu(status) },
-      ]);
-      return;
-    }
-
-    let subitemTitle = '';
-    if (data.action === 'select_subitem') {
-      const sub = doc.subitems.find((s) => s.title === data.subTitle);
-      if (!sub) {
-        await line.reply(replyToken, [text('ไม่พบหัวข้อนี้ในเอกสาร กรุณาพิมพ์「เมนู」เพื่อเลือกใหม่อีกครั้ง')]);
-        return;
-      }
-      subitemTitle = sub.title;
-    }
-
-    await repo.setPendingUpload(lineUserId, { docKey: doc.key, subitemTitle }, PENDING_TTL_SECONDS);
-    await line.reply(replyToken, [
-      text(`กรุณาส่งรูปภาพ หรือไฟล์ PDF ของ "${subitemTitle || doc.label}" เข้ามาในแชทนี้ได้เลยค่ะ`),
-    ]);
-  }
-}
-
-async function handleIncomingFile(replyToken: string, lineUserId: string, messageId: string, deps: HandlerDeps) {
-  const { repo, line, config } = deps;
-
-  // เช็คบัญชีก่อนเป็นอย่างแรก — คนที่ยังไม่มีบัญชีส่งรูปมา → เงียบ
-  const applicant = await repo.findApplicantByLineId(lineUserId);
-  if (!applicant) return;
-  const pending = await repo.getPendingUpload(lineUserId);
-  if (!pending) return; // ยังไม่ได้เลือกเอกสารจากเมนู → เงียบ
-  if (!applicant.approved) return;
-
-  const allDocs = await repo.getDocTypes();
-  const doc = allDocs.find((d) => d.key === pending.docKey && d.enabled);
-  if (!doc) {
-    await repo.clearPendingUpload(lineUserId);
-    await line.reply(replyToken, [
-      text('เอกสารประเภทนี้ปิดรับการอัปโหลดผ่านแชทแล้วค่ะ กรุณาพิมพ์ "เมนู" เพื่อเลือกเอกสารใหม่'),
-    ]);
-    return;
-  }
-
-  const content = await line.getContent(messageId);
-  if (!content) {
-    await line.reply(replyToken, [text('ขออภัยค่ะ ระบบรับไฟล์ไม่สำเร็จ กรุณาส่งรูป/ไฟล์อีกครั้งนะคะ')]);
-    return;
-  }
-  const mimeType = content.contentType.split(';')[0].trim().toLowerCase();
-  if (!ALLOWED_MIME[mimeType]) {
-    await line.reply(replyToken, [text('รองรับเฉพาะรูปภาพ (JPG, PNG, WEBP) หรือไฟล์ PDF เท่านั้นค่ะ')]);
-    return;
-  }
-  if (content.bytes.length > config.maxUploadBytes) {
-    const mb = Math.round(config.maxUploadBytes / 1024 / 1024);
-    await line.reply(replyToken, [
-      text(`ไฟล์มีขนาดใหญ่เกิน ${mb} MB ค่ะ กรุณาลดขนาดไฟล์แล้วส่งใหม่อีกครั้งนะคะ`),
-    ]);
-    return;
-  }
-
-  await repo.saveUploadedFile({
-    applicant,
-    docKey: doc.key,
-    subitemTitle: pending.subitemTitle,
-    bytes: content.bytes,
-    mimeType,
-    source: 'line',
-  });
-  await repo.clearPendingUpload(lineUserId);
-
-  const doneLabel = pending.subitemTitle ? `${doc.label} - ${pending.subitemTitle}` : doc.label;
-  await repo.logActivity({
-    actor: applicant.name || 'Applicant',
-    action: 'อัปโหลดผ่าน LINE',
-    targetId: applicant.code,
-    targetName: applicant.name,
-    detail: `${doneLabel} (${Math.round(content.bytes.length / 1024)} KB)`,
-  });
-
-  const { summary } = await loadContext(applicant, repo);
-  const remaining = summary.actionable.length;
-  await line.reply(replyToken, [
-    text(
-      `ระบบได้รับ "${doneLabel}" เรียบร้อยแล้วค่ะ รอเจ้าหน้าที่ตรวจสอบ\n` +
-        (remaining > 0
-          ? `เหลืออีก ${remaining} รายการ พิมพ์ "เมนู" เพื่อดูรายการที่ยังขาดค่ะ`
-          : 'คุณส่งเอกสารครบทุกรายการแล้วค่ะ'),
-    ),
-  ]);
-
-  if (remaining === 0 && applicant.lineUserId) {
-    const ok = await line.push(applicant.lineUserId, [
-      {
-        type: 'flex',
-        altText: `คุณ${applicant.name} ส่งเอกสารครบถ้วนแล้ว`,
-        contents: buildDocsCompleteFlex(applicant.name, summary.total, config.logoUrl),
-      },
-    ]);
-    await repo.logNotification({
-      type: 'docs_complete',
-      applicant,
-      status: ok ? 'ok' : 'error',
-      messagePreview: 'ส่งเอกสารครบถ้วนแล้ว',
-      error: ok ? undefined : 'push failed',
-    });
-  }
 }

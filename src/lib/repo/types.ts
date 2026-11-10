@@ -1,10 +1,5 @@
 import type { Applicant, DocReview, DocType, FileSlotRef } from '@/lib/docs/types';
 
-export interface PendingUpload {
-  docKey: string;
-  subitemTitle: string;
-}
-
 export interface SaveUploadInput {
   applicant: Applicant;
   docKey: string;
@@ -58,7 +53,6 @@ export interface NotificationLogInput {
  */
 export interface Repo {
   findApplicantByLineId(lineUserId: string): Promise<Applicant | null>;
-  createApplicantForLine(lineUserId: string): Promise<Applicant>;
   findApplicantByToken(token: string): Promise<Applicant | null>;
   /** เบอร์ในฐานข้อมูลถูกจัดรูปแบบเป็น 0xxxxxxxxx แล้ว (ตอนย้ายข้อมูล / ลงทะเบียน) */
   findApplicantsByPhone(phone: string): Promise<Applicant[]>;
@@ -73,9 +67,6 @@ export interface Repo {
   getDocTypes(): Promise<DocType[]>;
   getDocState(applicantId: string): Promise<{ files: FileSlotRef[]; reviews: DocReview[] }>;
 
-  setPendingUpload(lineUserId: string, pending: PendingUpload, ttlSeconds: number): Promise<void>;
-  getPendingUpload(lineUserId: string): Promise<PendingUpload | null>;
-  clearPendingUpload(lineUserId: string): Promise<void>;
 
   /**
    * เก็บไฟล์ + บันทึกแถวไฟล์ + แทนที่ไฟล์เดิมของช่องเดียวกัน

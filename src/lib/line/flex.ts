@@ -2,8 +2,7 @@
  * Flex Message ของ LINE — ย้ายดีไซน์มาจาก LineMessaging.gs / LineWebhook.gs ของระบบเดิม
  * โทนสี COM7: เขียวแบรนด์ #2F9A2A
  */
-import type { DocStatus } from '@/lib/docs/status';
-import type { FlexBubble, FlexCarousel, FlexComponent } from './types';
+import type { FlexBubble, FlexComponent } from './types';
 
 export const FLEX_THEME = {
   success: { color: '#2F9A2A', dark: '#1E7A1A', tint: '#E8F5E9', header: '#2F9A2A', button: '#35872A' },
@@ -341,272 +340,25 @@ export function buildDocsCompleteFlex(applicantName: string, totalDocs: number, 
   };
 }
 
-export function selectDocPostback(docKey: string, label: string): string {
-  return `action=select_doc&docKey=${encodeURIComponent(docKey)}&label=${encodeURIComponent(label)}`;
-}
-
-/** Carousel รายการเอกสารที่ยังต้องส่ง/แก้ไข (สูงสุด 10 ใบ ตามข้อจำกัดของ LINE) */
-export function buildDocMenuCarousel(actionable: DocStatus[], allDocs: DocStatus[]): FlexCarousel {
-  const bubbles: FlexBubble[] = actionable.slice(0, 10).map((s) => {
-    const d = s.doc;
-    const isRejected = s.state === 'rejected';
-    const docNumber = allDocs.findIndex((x) => x.doc.key === d.key) + 1;
-    const detailList = [d.description, ...d.subitems.map((x) => x.title)].filter(Boolean).slice(0, 5);
-
-    const accentColor = isRejected ? '#B3261E' : '#E8A33D';
-    const statusBg = isRejected ? '#B3261E' : '#FFF3CD';
-    const statusColor = isRejected ? '#FFFFFF' : '#6B4E00';
-    const statusLabel = isRejected ? 'ต้องแก้ไข' : s.state === 'partial' ? 'ส่งยังไม่ครบ' : 'ยังไม่ได้ส่ง';
-    const buttonColor = isRejected ? '#B3261E' : '#2F6F4E';
-
-    const bodyContents: FlexComponent[] = [
-      {
-        type: 'text',
-        text: 'เอกสารที่ ' + (docNumber > 0 ? String(docNumber).padStart(2, '0') : ''),
-        size: 'xxs',
-        color: '#8E8E93',
-        weight: 'bold',
-      },
-      { type: 'text', text: d.label, weight: 'bold', size: 'md', wrap: true, color: '#1A1A1A', margin: 'xs' },
-      {
-        type: 'box',
-        layout: 'horizontal',
-        margin: 'sm',
-        contents: [
-          {
-            type: 'box',
-            layout: 'vertical',
-            flex: 0,
-            paddingAll: '4px',
-            paddingStart: '8px',
-            paddingEnd: '8px',
-            cornerRadius: '4px',
-            backgroundColor: statusBg,
-            contents: [{ type: 'text', text: statusLabel, size: 'xs', color: statusColor, weight: 'bold', align: 'center' }],
-          },
-          { type: 'filler' },
-        ],
-      },
-      { type: 'separator', margin: 'md', color: '#EBEBEB' },
-    ];
-
-    if (isRejected && s.reason) {
-      bodyContents.push({
-        type: 'box',
-        layout: 'vertical',
-        margin: 'md',
-        paddingAll: 'sm',
-        cornerRadius: '6px',
-        backgroundColor: '#FDECEC',
-        contents: [{ type: 'text', text: 'เหตุผล: ' + s.reason, size: 'xs', color: '#B3261E', wrap: true }],
-      });
-    }
-
-    if (detailList.length) {
-      bodyContents.push({
-        type: 'box',
-        layout: 'vertical',
-        margin: 'md',
-        spacing: 'xs',
-        contents: detailList.map((item) => ({
-          type: 'box',
-          layout: 'baseline',
-          spacing: 'xs',
-          contents: [
-            { type: 'text', text: '●', size: 'xxs', color: '#BDBDBD', flex: 0 },
-            { type: 'text', text: item, size: 'xs', color: '#8E8E93', wrap: true, flex: 1 },
-          ],
-        })),
-      });
-    }
-
-    return {
-      type: 'bubble',
-      size: 'kilo',
-      body: {
-        type: 'box',
-        layout: 'horizontal',
-        spacing: 'none',
-        paddingAll: '0px',
-        contents: [
-          { type: 'box', layout: 'vertical', width: '5px', backgroundColor: accentColor, contents: [{ type: 'filler' }] },
-          { type: 'box', layout: 'vertical', paddingAll: '15px', spacing: 'none', contents: bodyContents },
-        ],
-      },
-      footer: {
-        type: 'box',
-        layout: 'vertical',
-        paddingAll: '14px',
-        paddingTop: 'none',
-        contents: [
-          {
-            type: 'button',
-            style: 'primary',
-            color: buttonColor,
-            height: 'sm',
-            action: {
-              type: 'postback',
-              label: isRejected ? 'แนบไฟล์ใหม่' : 'แนบเอกสารนี้',
-              data: selectDocPostback(d.key, d.label),
-              displayText: (isRejected ? 'ต้องการแก้ไข: ' : 'ต้องการแนบ: ') + d.label,
-            },
-          },
-        ],
-      },
-    };
+/** ปุ่มเปิดหน้าส่งเอกสาร (MINI App) พร้อมสรุปสถานะ — ใช้ตอบ「เมนู / สถานะ」และเมื่อผู้สมัครส่งรูปเข้ามาในแชท */
+export function buildOpenAppFlex(opts: {
+  title: string;
+  greeting: string;
+  items?: string[];
+  note?: string;
+  url: string;
+  logoUrl: string | null;
+}): FlexBubble {
+  const items = opts.items ?? [];
+  return buildNotifyFlex({
+    tone: 'info',
+    title: opts.title,
+    greeting: opts.greeting,
+    list: items.length
+      ? { title: 'รายการที่ยังต้องดำเนินการ', items: items.length > 10 ? [...items.slice(0, 10), `และอีก ${items.length - 10} รายการ`] : items }
+      : undefined,
+    note: opts.note ? { label: 'หมายเหตุ', text: opts.note, tone: 'info' } : undefined,
+    button: { label: 'เปิดหน้าส่งเอกสาร', uri: opts.url },
+    logoUrl: opts.logoUrl,
   });
-  return { type: 'carousel', contents: bubbles };
-}
-
-/** เมนูเลือกหัวข้อย่อยของเอกสารหลายหน้า */
-export function buildSubitemMenu(status: DocStatus): FlexBubble {
-  const d = status.doc;
-  const rows: FlexComponent[] = status.subitems.map((s) => {
-    let statusText = s.optional ? 'ถ้ามี — ข้ามได้' : 'แตะเพื่ออัปโหลดไฟล์';
-    let statusColor = '#9CA3AF';
-    let bg = '#FFFFFF';
-    if (s.state === 'rejected') {
-      statusText = s.reason ? 'ไม่ผ่าน: ' + s.reason : 'ไม่ผ่าน กรุณาแนบใหม่';
-      statusColor = '#B23A34';
-      bg = '#FAE9E7';
-    } else if (s.state === 'approved') {
-      statusText = 'ผ่านการตรวจแล้ว';
-      statusColor = '#2C8F5E';
-      bg = '#E4F3EA';
-    } else if (s.state === 'submitted') {
-      statusText = 'แนบไฟล์แล้ว';
-      statusColor = '#2C8F5E';
-      bg = '#E4F3EA';
-    }
-    return {
-      type: 'box',
-      layout: 'horizontal',
-      paddingAll: '12px',
-      backgroundColor: bg,
-      cornerRadius: 'md',
-      action: {
-        type: 'postback',
-        data: `action=select_subitem&docKey=${encodeURIComponent(d.key)}&subTitle=${encodeURIComponent(s.title)}`,
-        displayText: s.title,
-      },
-      contents: [
-        {
-          type: 'box',
-          layout: 'vertical',
-          flex: 1,
-          contents: [
-            { type: 'text', text: s.title, size: 'sm', weight: 'bold', wrap: true, color: '#1C2321' },
-            { type: 'text', text: statusText, size: 'xs', color: statusColor, wrap: true, margin: 'xs' },
-          ],
-        },
-      ],
-    };
-  });
-
-  return {
-    type: 'bubble',
-    size: 'mega',
-    header: {
-      type: 'box',
-      layout: 'vertical',
-      backgroundColor: '#2F9A2A',
-      paddingAll: '14px',
-      contents: [
-        { type: 'text', text: d.label, color: '#FFFFFF', weight: 'bold', size: 'md', wrap: true },
-        { type: 'text', text: `ไฟล์ย่อย ${status.subDone}/${status.subRequired} ไฟล์`, color: '#E8F5E9', size: 'xs', margin: 'sm' },
-      ],
-    },
-    body: { type: 'box', layout: 'vertical', spacing: 'sm', paddingAll: '12px', contents: rows },
-  };
-}
-
-/** รายละเอียดเอกสารหนึ่งชิ้น */
-export function buildDocDetail(status: DocStatus): FlexBubble {
-  const d = status.doc;
-  const body: FlexComponent[] = [
-    { type: 'text', text: d.description || 'ไม่มีคำอธิบายเพิ่มเติมสำหรับเอกสารนี้', size: 'sm', color: FLEX_THEME.text, wrap: true },
-  ];
-  if (d.subitems.length) {
-    body.push({
-      type: 'box',
-      layout: 'vertical',
-      margin: 'md',
-      spacing: 'xs',
-      contents: d.subitems.map((s) => ({
-        type: 'box',
-        layout: 'baseline',
-        spacing: 'sm',
-        contents: [
-          { type: 'text', text: '•', size: 'xs', color: FLEX_THEME.sub, flex: 0 },
-          { type: 'text', text: s.title, size: 'xs', color: FLEX_THEME.sub, wrap: true, flex: 1 },
-        ],
-      })),
-    });
-  }
-  const submitted = status.state === 'submitted' || status.state === 'partial' || status.state === 'approved';
-  if (status.state === 'rejected') {
-    body.push({
-      type: 'box',
-      layout: 'vertical',
-      margin: 'lg',
-      backgroundColor: FLEX_THEME.danger.color + '14',
-      cornerRadius: 'md',
-      paddingAll: 'md',
-      contents: [
-        { type: 'text', text: 'เหตุผลที่ไม่ผ่าน', size: 'xs', weight: 'bold', color: FLEX_THEME.danger.dark },
-        { type: 'text', text: status.reason || '-', size: 'sm', color: FLEX_THEME.text, wrap: true, margin: 'xs' },
-      ],
-    });
-  } else if (submitted) {
-    body.push({
-      type: 'box',
-      layout: 'vertical',
-      margin: 'lg',
-      backgroundColor: FLEX_THEME.success.color + '14',
-      cornerRadius: 'md',
-      paddingAll: 'md',
-      contents: [
-        {
-          type: 'text',
-          text: status.state === 'approved' ? 'ผ่านการตรวจแล้ว' : 'แนบไฟล์แล้ว รอเจ้าหน้าที่ตรวจสอบ',
-          size: 'sm',
-          color: FLEX_THEME.success.dark,
-          wrap: true,
-        },
-      ],
-    });
-  }
-
-  return {
-    type: 'bubble',
-    size: 'mega',
-    header: {
-      type: 'box',
-      layout: 'vertical',
-      backgroundColor: FLEX_THEME.info.color,
-      paddingAll: 'lg',
-      contents: [{ type: 'text', text: d.label, weight: 'bold', size: 'md', color: '#FFFFFF', wrap: true }],
-    },
-    body: { type: 'box', layout: 'vertical', paddingAll: 'lg', contents: body },
-    footer: {
-      type: 'box',
-      layout: 'vertical',
-      paddingAll: 'lg',
-      paddingTop: 'none',
-      contents: [
-        {
-          type: 'button',
-          style: 'primary',
-          color: FLEX_THEME.success.color,
-          height: 'sm',
-          action: {
-            type: 'postback',
-            label: submitted ? 'แนบไฟล์ใหม่' : 'แนบเอกสารนี้',
-            data: selectDocPostback(d.key, d.label),
-            displayText: 'ต้องการแนบ: ' + d.label,
-          },
-        },
-      ],
-    },
-  };
 }

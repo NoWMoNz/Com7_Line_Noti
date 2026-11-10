@@ -6,7 +6,7 @@ import type { ReviewStatus } from '@/lib/docs/types';
 import { serverEnv } from '@/lib/env';
 import { createLineClient } from '@/lib/line/client';
 import { DEFAULT_LOGO_URL } from '@/lib/line/flex';
-import { buildPersonalLink } from '@/lib/line/handler';
+import { buildAppLink } from '@/lib/line/handler';
 import { createSupabaseRepo } from '@/lib/repo/supabase';
 import { getSupabaseAdmin } from '@/lib/supabase/admin';
 import {
@@ -83,8 +83,8 @@ function ctx() {
   return {
     line: createLineClient(serverEnv.lineChannelAccessToken()),
     logoUrl: serverEnv.lineLogoUrl() || DEFAULT_LOGO_URL,
-    link: (token: string) =>
-      buildPersonalLink({ liffId: serverEnv.liffId(), appBaseUrl: serverEnv.appBaseUrl(), logoUrl: null, maxUploadBytes: 0 }, token),
+    // ไม่แนบ token — หน้าส่งเอกสารรู้ว่าเป็นใครจากบัญชี LINE
+    link: () => buildAppLink({ liffId: serverEnv.liffId(), appBaseUrl: serverEnv.appBaseUrl(), logoUrl: null, maxUploadBytes: 0 }),
   };
 }
 
@@ -100,8 +100,8 @@ async function push(c: Candidate, kind: 'doc_reminder' | 'auto_deadline' | '3day
   const missing = missingLabels(c.summary);
   const followup = kind === '3day_no_action_followup';
   const bubble = followup
-    ? buildFollowupBubble({ name: c.name, missing, feedback: c.admin_feedback ?? '', link: link(c.access_token), logoUrl })
-    : buildReminderBubble({ name: c.name, missing, deadline: c.deadline, feedback: c.admin_feedback ?? '', link: link(c.access_token), logoUrl });
+    ? buildFollowupBubble({ name: c.name, missing, feedback: c.admin_feedback ?? '', link: link(), logoUrl })
+    : buildReminderBubble({ name: c.name, missing, deadline: c.deadline, feedback: c.admin_feedback ?? '', link: link(), logoUrl });
   const altText = followup ? `แจ้งเตือนคุณ${c.name} กรุณาดำเนินการส่งเอกสาร` : `คุณ${c.name} ยังส่งเอกสารไม่ครบ (${missing.length} รายการ)`;
   const ok = await line.push(c.line_user_id, [{ type: 'flex', altText, contents: bubble }]).catch(() => false);
 

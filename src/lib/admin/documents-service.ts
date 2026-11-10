@@ -176,10 +176,6 @@ export async function saveDocType(admin: AdminProfile, input: DocTypeInput): Pro
   for (const r of renames) {
     ok(await db().from('applicant_files').update({ subitem_title: r.title }).eq('doc_key', key).eq('subitem_title', r.previousTitle!), 'rename files');
     ok(await db().from('doc_reviews').update({ subitem_title: r.title }).eq('doc_key', key).eq('subitem_title', r.previousTitle!), 'rename reviews');
-    ok(
-      await db().from('line_pending_uploads').update({ subitem_title: r.title }).eq('doc_key', key).eq('subitem_title', r.previousTitle!),
-      'rename pending',
-    );
   }
 
   await audit(

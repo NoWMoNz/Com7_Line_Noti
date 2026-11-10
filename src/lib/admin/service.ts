@@ -9,7 +9,7 @@ import type { Applicant, DocReview, FileSlotRef, ReviewStatus } from '@/lib/docs
 import { serverEnv } from '@/lib/env';
 import { createLineClient } from '@/lib/line/client';
 import { DEFAULT_LOGO_URL } from '@/lib/line/flex';
-import { buildPersonalLink } from '@/lib/line/handler';
+import { buildAppLink } from '@/lib/line/handler';
 import type { LineMessage } from '@/lib/line/types';
 import { createSupabaseRepo, DOCS_BUCKET } from '@/lib/repo/supabase';
 import { getSupabaseAdmin } from '@/lib/supabase/admin';
@@ -341,7 +341,7 @@ export async function setApproval(admin: AdminProfile, id: string, approved: boo
   );
   if (approved && !row.approved && notify) {
     const { handler, logoUrl } = lineConfig();
-    const msg = buildApprovalMessage(row.name, buildPersonalLink(handler, row.access_token), logoUrl);
+    const msg = buildApprovalMessage(row.name, buildAppLink(handler), logoUrl);
     await pushAndLog(row, 'approved', msg.altText, [{ type: 'flex', altText: msg.altText, contents: msg.bubble }], adminDisplayName(admin));
   }
   return getApplicantDetail(id);

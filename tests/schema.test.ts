@@ -7,6 +7,7 @@ import { PGlite } from '@electric-sql/pglite';
 import { beforeAll, describe, expect, it } from 'vitest';
 
 const SUPABASE_STUBS = `
+  create role anon; create role authenticated; create role service_role;
   create schema auth;
   create table auth.users (id uuid primary key default gen_random_uuid(), email text);
   create schema storage;
@@ -87,6 +88,33 @@ describe('schema', () => {
     expect(await one(`select count(*)::int n from applicant_files`)).toEqual({ n: 0 });
     expect(await one(`select count(*)::int n from doc_reviews`)).toEqual({ n: 0 });
     expect(await one(`select applicant_id from notification_log where type = 'test'`)).toEqual({ applicant_id: null });
+  });
+
+  it('หัวข้อตรวจของ HR: ไม่ใช่ช่องอัปโหลด / ไฟล์เดิมย้ายไปช่องหลัก / เหตุผลตีกลับย้ายไปที่เอกสาร', async () => {
+    const kinds = await db.query<{ title: string; kind: string }>(
+      `select title, kind from doc_subitems where doc_key = 'doc3_id_card' order by sort_order`,
+    );
+    expect(kinds.rows).toEqual([
+      { title: 'เซ็นรับรอง', kind: 'check' },
+      { title: 'วันหมดอายุบัตร', kind: 'check' },
+    ]);
+    expect((await one<{ kind: string }>(`select kind from doc_subitems where doc_key = 'doc1_application_set' limit 1`))?.kind).toBe('file');
+
+    // ข้อมูลแบบระบบเดิม: ไฟล์และผลตรวจผูกกับหัวข้อตรวจ
+    const a = await one<{ id: string }>(`insert into applicants (name) values ('เดิม') returning id`);
+    await db.query(`insert into applicant_files (applicant_id, doc_key, subitem_title, legacy_url) values ($1, 'doc3_id_card', 'เซ็นรับรอง', 'https://x')`, [a!.id]);
+    await db.query(
+      `insert into doc_reviews (applicant_id, doc_key, subitem_title, status, reason) values ($1, 'doc3_id_card', 'วันหมดอายุบัตร', 'rejected', 'บัตรหมดอายุ')`,
+      [a!.id],
+    );
+    await db.query(`select convert_check_subitems()`);
+
+    expect((await one<{ subitem_title: string }>(`select subitem_title from applicant_files where applicant_id = $1`, [a!.id]))?.subitem_title).toBe('');
+    const rv = await db.query<{ subitem_title: string; status: string; reason: string }>(
+      `select subitem_title, status, reason from doc_reviews where applicant_id = $1`,
+      [a!.id],
+    );
+    expect(rv.rows).toEqual([{ subitem_title: '', status: 'rejected', reason: 'วันหมดอายุบัตร: บัตรหมดอายุ' }]);
   });
 
   it('เปิด RLS ครบทุกตาราง', async () => {
