@@ -21,6 +21,7 @@ import {
   type OnboardEmployee,
   type OnboardTemplates,
 } from './onboarding';
+import { selectForApplicants } from './fetch-all';
 import { canEditAfterOnboard, canSendOnboarding } from './roles';
 import { AdminInputError } from './service';
 import type { AdminProfile, BranchOption, OnboardingData, OnboardingInfoInput, OnboardingItem } from './types';
@@ -137,19 +138,15 @@ export async function listOnboarding(): Promise<OnboardingData> {
   ) as Row[];
 
   const ids = rows.filter((r) => !r.onboard_notified_at).map((r) => r.id);
-  const [allDocs, branches, templates, filesRes, reviewsRes] = await Promise.all([
+  type FileRow = { applicant_id: string; doc_key: string; subitem_title: string };
+  type ReviewRow = FileRow & { status: ReviewStatus; reason: string };
+  const [allDocs, branches, templates, files, reviews] = await Promise.all([
     createSupabaseRepo(db()).getDocTypes(),
     branchIndex(),
     getTemplates(),
-    ids.length
-      ? db().from('applicant_files').select('applicant_id, doc_key, subitem_title').in('applicant_id', ids).eq('is_current', true)
-      : Promise.resolve({ data: [], error: null }),
-    ids.length
-      ? db().from('doc_reviews').select('applicant_id, doc_key, subitem_title, status, reason').in('applicant_id', ids)
-      : Promise.resolve({ data: [], error: null }),
+    selectForApplicants<FileRow>(db(), 'applicant_files', 'applicant_id, doc_key, subitem_title', ids, { currentOnly: true }),
+    selectForApplicants<ReviewRow>(db(), 'doc_reviews', 'applicant_id, doc_key, subitem_title, status, reason', ids),
   ]);
-  const files = ok(filesRes, 'files') as Array<{ applicant_id: string; doc_key: string; subitem_title: string }>;
-  const reviews = ok(reviewsRes, 'reviews') as Array<{ applicant_id: string; doc_key: string; subitem_title: string; status: ReviewStatus; reason: string }>;
 
   const items: OnboardingItem[] = [];
   for (const r of rows) {

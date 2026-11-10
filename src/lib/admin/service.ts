@@ -14,6 +14,7 @@ import type { LineMessage } from '@/lib/line/types';
 import { createSupabaseRepo, DOCS_BUCKET } from '@/lib/repo/supabase';
 import { getSupabaseAdmin } from '@/lib/supabase/admin';
 import { adminDisplayName } from './auth';
+import { selectForApplicants } from './fetch-all';
 import {
   applicantStage,
   buildApprovalMessage,
@@ -169,17 +170,17 @@ export async function listApplicants(opts: { q: string; filter: ApplicantListFil
   const res = await query;
   const rows = ok(res, 'list applicants') as Row[];
   const ids = rows.map((r) => r.id);
-  const [allDocs, filesRes, reviewsRes] = await Promise.all([
+  const [allDocs, files, reviews] = await Promise.all([
     docTypes(),
-    ids.length
-      ? db().from('applicant_files').select('applicant_id, doc_key, subitem_title').in('applicant_id', ids).eq('is_current', true)
-      : Promise.resolve({ data: [], error: null }),
-    ids.length
-      ? db().from('doc_reviews').select('applicant_id, doc_key, subitem_title, status, reason, reviewed_by, updated_at').in('applicant_id', ids)
-      : Promise.resolve({ data: [], error: null }),
+    selectForApplicants<{ applicant_id: string; doc_key: string; subitem_title: string }>(
+      db(),
+      'applicant_files',
+      'applicant_id, doc_key, subitem_title',
+      ids,
+      { currentOnly: true },
+    ),
+    selectForApplicants<ReviewRow>(db(), 'doc_reviews', 'applicant_id, doc_key, subitem_title, status, reason, reviewed_by, updated_at', ids),
   ]);
-  const files = ok(filesRes, 'list files') as Array<{ applicant_id: string; doc_key: string; subitem_title: string }>;
-  const reviews = ok(reviewsRes, 'list reviews') as ReviewRow[];
 
   const items: ApplicantListItem[] = rows.map((r) => {
     const a = toApplicant(r);
