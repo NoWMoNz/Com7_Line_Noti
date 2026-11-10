@@ -39,3 +39,9 @@ yarn-error.log*
 # typescript
 *.tsbuildinfo
 next-env.d.ts
+
+# ไฟล์ตัวอย่างค่าตั้งค่า (ไม่มีค่าลับ) ให้ commit ได้
+!.env.example
+
+# ไฟล์ export จาก Google Sheets มีข้อมูลส่วนบุคคล ห้าม commit
+*export*.json
