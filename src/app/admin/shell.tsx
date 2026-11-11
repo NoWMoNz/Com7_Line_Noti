@@ -45,7 +45,7 @@ export function AdminShell({ section, children }: { section: AdminSection; child
   }
 
   return (
-    <div className="flex h-dvh flex-col">
+    <div className="flex h-dvh flex-col overflow-hidden">
       <header className="flex items-center gap-1 border-b border-line px-3 py-2 sm:gap-3 sm:px-4">
         <p className="mr-2 hidden font-semibold sm:block">
           <span className="text-brand">Com7</span> Recruitment

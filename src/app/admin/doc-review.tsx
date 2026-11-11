@@ -200,7 +200,7 @@ function DocCard({
       </div>
 
       {doc.checks.length > 0 && (anyFile || covered) && (
-        <fieldset className="mt-3 flex flex-wrap gap-x-4 gap-y-1 rounded-lg bg-surface px-3 py-2">
+        <fieldset className="relative mt-3 flex flex-wrap gap-x-4 gap-y-1 rounded-lg bg-surface px-3 py-2">
           <legend className="sr-only">จุดที่ต้องตรวจ</legend>
           <span className="text-xs font-semibold text-muted">ตรวจ:</span>
           {doc.checks.map((c) => (
