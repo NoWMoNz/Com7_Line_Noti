@@ -25,15 +25,16 @@ const text = (v: unknown, max: number, label: string) => {
 };
 
 async function branchesIndex() {
-  const rows = ok(await db().from('branches').select('id, label, company, shop_name, ta, intern'), 'branches') as Array<{
+  const rows = ok(await db().from('branches').select('id, label, company, shop_name, shop_code, ta, intern'), 'branches') as Array<{
     id: number;
     label: string;
     company: string | null;
     shop_name: string;
+    shop_code: string | null;
     ta: string | null;
     intern: string | null;
   }>;
-  return rows.map((b) => ({ id: b.id, label: b.label, company: b.company ?? '', shopName: b.shop_name, ta: b.ta ?? '', intern: b.intern ?? '' }));
+  return rows.map((b) => ({ id: b.id, label: b.label, company: b.company ?? '', shopName: b.shop_name, shopCode: b.shop_code ?? '', ta: b.ta ?? '', intern: b.intern ?? '' }));
 }
 
 /** แปลงฟอร์ม → คอลัมน์ (เฉพาะช่องที่ส่งมา) พร้อมตรวจค่า */

@@ -222,12 +222,20 @@ export async function listApplicants(opts: {
   const allDocs = await docTypes();
 
   /** ค้นหาชื่อ / รหัส / เบอร์ */
+  // ค้นทีละคำ (ทุกคำต้องเจอ ไม่สนลำดับ/ช่องว่างซ้ำ) — "สมชาย ใจดี" เจอชื่อที่บันทึกเป็น "สมชาย  ใจดี"
+  // ตัดอักขระที่มีความหมายใน filter ของ PostgREST ( , ( ) * " \ ) ออก กันคำค้นทำให้ query พัง
+  const terms = q
+    .replace(/[,()*"\\]/g, ' ')
+    .split(/\s+/)
+    .filter(Boolean);
   const withSearch = <T extends { or: (f: string) => T }>(query: T): T => {
-    if (!q) return query;
-    const digits = q.replace(/\D/g, '');
-    const parts = [`name.ilike.*${q}*`, `code.ilike.*${q}*`];
-    if (digits.length >= 3) parts.push(`phone.ilike.*${digits}*`);
-    return query.or(parts.join(','));
+    for (const t of terms) {
+      const digits = t.replace(/\D/g, '');
+      const parts = [`name.ilike.*${t}*`, `code.ilike.*${t}*`];
+      if (digits.length >= 3) parts.push(`phone.ilike.*${digits}*`);
+      query = query.or(parts.join(','));
+    }
+    return query;
   };
 
   let rows: Row[];
@@ -554,13 +562,17 @@ export async function setDocScope(admin: AdminProfile, id: string, rawScope: unk
 /** บริษัทของสาขาที่ผู้สมัครผูกไว้ (ตามตารางสาขา) — ไม่มีสาขา/หาไม่เจอ → null */
 async function branchCompanyOf(branchLabel: string | null): Promise<string | null> {
   if (!branchLabel?.trim()) return null;
-  const rows = ok(await db().from('branches').select('id, label, company, shop_name'), 'branches') as Array<{
+  const rows = ok(await db().from('branches').select('id, label, company, shop_name, shop_code'), 'branches') as Array<{
     id: number;
     label: string;
     company: string | null;
     shop_name: string;
+    shop_code: string | null;
   }>;
-  const b = findBranch(branchLabel, rows.map((r) => ({ id: r.id, label: r.label, company: r.company ?? '', shopName: r.shop_name })));
+  const b = findBranch(
+    branchLabel,
+    rows.map((r) => ({ id: r.id, label: r.label, company: r.company ?? '', shopName: r.shop_name, shopCode: r.shop_code ?? '' })),
+  );
   return b?.company ?? null;
 }
 

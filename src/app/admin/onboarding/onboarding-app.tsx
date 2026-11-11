@@ -5,6 +5,7 @@ import { useSearchParams } from 'next/navigation';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   branchLockedFields,
+  exactBranch,
   fillTemplate,
   formatThaiDate,
   missingOnboardFields,
@@ -15,6 +16,7 @@ import { canEditAfterOnboard, canSendOnboarding } from '@/lib/admin/roles';
 import type { BranchOption, OnboardingData, OnboardingItem } from '@/lib/admin/types';
 import { Badge, Button, ErrorText, Icon, Spinner } from '@/components/ui';
 import { adminFetch, fmtDateTime } from '../admin-lib';
+import { BranchPicker } from '../branch-picker';
 import { useAdmin } from '../shell';
 
 type Tab = 'pending' | 'sent';
@@ -260,7 +262,7 @@ function OnboardingForm({
   readOnly: boolean;
   onSaved: (i: OnboardingItem) => void;
 }) {
-  const [f, setF] = useState({
+  const [form, setF] = useState({
     startDate: item.startDate ?? '',
     position: item.position,
     branch: item.branch,
@@ -272,19 +274,23 @@ function OnboardingForm({
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [saved, setSaved] = useState(false);
+  // สาขาในตาราง → บริษัท / TA ตามสาขา (แก้เองไม่ได้) — ค่าที่แสดง/บันทึก = ค่าตามสาขาทับค่าในฟอร์ม
+  // (คนที่มีสาขาอยู่แล้วแต่ TA ยังว่าง ก็เห็น TA ของสาขาทันที)
+  const branch = exactBranch(form.branch, branches);
+  const locked = branch ? branchLockedFields(branch) : null;
+  const branchCompany = locked?.company ?? '';
+  const lockedCompany = locked?.company;
+  const lockedTa = locked?.ta;
+  const f = useMemo(
+    () => (lockedCompany ? { ...form, company: lockedCompany, ...(lockedTa ? { ta: lockedTa } : {}) } : form),
+    [form, lockedCompany, lockedTa],
+  );
   const set = (k: keyof typeof f) => (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>) => {
     setF({ ...f, [k]: e.target.value });
     setSaved(false);
   };
-
-  // เลือกสาขาจากรายการ → บริษัท / TA ตามตารางสาขา (แก้เองไม่ได้)
-  const branch = branches.find((b) => b.label === f.branch.trim()) ?? null;
-  const locked = branch ? branchLockedFields(branch) : null;
-  const branchCompany = locked?.company ?? '';
-  const setBranch = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const b = branches.find((x) => x.label === e.target.value.trim());
-    const l = b ? branchLockedFields(b) : null;
-    setF({ ...f, branch: e.target.value, ...(l ? { company: l.company, ...(l.ta ? { ta: l.ta } : {}) } : {}) });
+  const setBranch = (text: string) => {
+    setF({ ...form, branch: text });
     setSaved(false);
   };
   const preview = useMemo(() => {
@@ -312,7 +318,6 @@ function OnboardingForm({
     onSaved(r.data);
   }
 
-  const listId = `branches-${item.id}`;
   return (
     <div className="grid gap-4 border-t border-line p-4 lg:grid-cols-2">
       <fieldset disabled={readOnly} className="grid gap-3 sm:grid-cols-2">
@@ -323,12 +328,7 @@ function OnboardingForm({
           <input value={f.position} onChange={set('position')} className={INPUT} />
         </Field>
         <Field label="สาขา" wide>
-          <input value={f.branch} onChange={setBranch} list={listId} className={INPUT} placeholder="พิมพ์เพื่อค้นหาสาขา" />
-          <datalist id={listId}>
-            {branches.map((b) => (
-              <option key={b.id} value={b.label} />
-            ))}
-          </datalist>
+          <BranchPicker value={f.branch} branches={branches} onChange={setBranch} disabled={readOnly} className={INPUT} />
         </Field>
         <Field label={locked ? 'บริษัท · ตามสาขา' : 'บริษัท (เลือกเทมเพลต)'}>
           <select value={f.company} onChange={set('company')} disabled={!!locked} className={INPUT}>

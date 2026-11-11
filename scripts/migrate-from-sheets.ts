@@ -13,6 +13,7 @@
  */
 import { existsSync, readFileSync } from 'node:fs';
 import { createClient, type SupabaseClient } from '@supabase/supabase-js';
+import { branchLockedFields, findBranch, type BranchRef } from '../src/lib/admin/onboarding';
 import { buildMigrationPlan, type MigrationPlan, type SheetExport } from '../src/lib/migration/transform';
 import { EXPORT_SHEETS, readXlsxExport } from './read-xlsx-export';
 
@@ -61,16 +62,32 @@ async function load(db: SupabaseClient, plan: MigrationPlan) {
   console.log('[2/8] branches (แทนที่ทั้งหมด)');
   must(await db.from('branches').delete().gte('id', 0), 'clear branches');
   for (const c of chunk(plan.branches)) must(await db.from('branches').insert(c), 'branches');
-  const branchRows = must(await db.from('branches').select('id, label, shop_name, shop_code'), 'read branches') as Array<{
+  const branchRows = must(
+    await db.from('branches').select('id, label, shop_name, shop_code, company, ta, intern'),
+    'read branches',
+  ) as Array<{
     id: number;
     label: string;
     shop_name: string;
     shop_code: string | null;
+    company: string | null;
+    ta: string | null;
+    intern: string | null;
   }>;
-  const branchByText = new Map<string, number>();
-  for (const b of branchRows) {
-    for (const t of [b.label, b.shop_name, b.shop_code]) if (t) branchByText.set(t.trim().toLowerCase(), b.id);
-  }
+  const branchRefs: BranchRef[] = branchRows.map((b) => ({
+    id: b.id,
+    label: b.label,
+    company: b.company ?? '',
+    shopName: b.shop_name,
+    shopCode: b.shop_code ?? '',
+    ta: b.ta ?? '',
+    intern: b.intern ?? '',
+  }));
+  /** สาขาของผู้สมัคร (ตรงชื่อ / รหัสสาขา / ชื่อร้าน) → branch_id + บริษัท/TA/Intern ตามตารางสาขา */
+  const branchColumns = (label: string | null | undefined) => {
+    const b = label ? findBranch(label, branchRefs) : null;
+    return b ? { branch_id: b.id, ...branchLockedFields(b) } : { branch_id: null };
+  };
 
   console.log('[3/8] settings');
   if (plan.settings.length) must(await db.from('settings').upsert(plan.settings, { onConflict: 'key' }), 'settings');
@@ -78,10 +95,7 @@ async function load(db: SupabaseClient, plan: MigrationPlan) {
   console.log('[4/8] applicants');
   const idByCode = new Map<string, string>();
   for (const c of chunk(plan.applicants)) {
-    const rows = c.map((a) => ({
-      ...a,
-      branch_id: a.branch_label ? branchByText.get(a.branch_label.trim().toLowerCase()) ?? null : null,
-    }));
+    const rows = c.map((a) => ({ ...a, ...branchColumns(a.branch_label) }));
     const saved = must(await db.from('applicants').upsert(rows, { onConflict: 'code' }).select('id, code'), 'applicants') as Array<{
       id: string;
       code: string;
@@ -89,6 +103,20 @@ async function load(db: SupabaseClient, plan: MigrationPlan) {
     saved.forEach((s) => idByCode.set(s.code, s.id));
   }
   const appIds = [...idByCode.values()];
+
+  // ลบ/ใส่สาขาใหม่ทำให้ branch_id ของผู้สมัครที่ไม่ได้อยู่ในไฟล์นี้ (ลงทะเบียนในระบบใหม่) หลุดเป็น null → ผูกกลับ
+  const orphans = must(
+    await db.from('applicants').select('id, branch_label').not('branch_label', 'is', null).is('branch_id', null),
+    'orphan applicants',
+  ) as Array<{ id: string; branch_label: string }>;
+  let relinked = 0;
+  for (const o of orphans) {
+    const cols = branchColumns(o.branch_label);
+    if (!cols.branch_id) continue;
+    must(await db.from('applicants').update(cols).eq('id', o.id), 'relink branch');
+    relinked++;
+  }
+  console.log(`    ผูกสาขากลับ ${relinked}/${orphans.length} คน`);
 
   console.log('[5/8] applicant_files (ลิงก์ Google Drive เดิม)');
   for (const c of chunk(appIds, 200)) {

@@ -2,10 +2,11 @@
 
 import { useEffect, useState } from 'react';
 import { isoToBangkokLocal } from '@/lib/admin/dates';
-import { branchLockedFields } from '@/lib/admin/onboarding';
+import { branchLockedFields, exactBranch } from '@/lib/admin/onboarding';
 import type { ApplicantDetail, ApplicantInfoInput, BranchOption } from '@/lib/admin/types';
 import { ErrorText } from '@/components/ui';
 import { adminFetch, fmtDateTime } from './admin-lib';
+import { BranchPicker } from './branch-picker';
 
 const INPUT =
   'h-10 w-full rounded-lg border border-line bg-background px-3 text-sm outline-none focus:border-brand focus:ring-2 focus:ring-brand/20';
@@ -62,17 +63,17 @@ export function ApplicantInfoForm({
   const branches = useBranches();
   const set = (k: keyof Form) => (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => setF({ ...f, [k]: e.target.value });
   // เลือกสาขาจากรายการ → บริษัท / TA / Intern ตามตารางสาขา (แก้เองไม่ได้)
-  const branch = branches.find((b) => b.label === f.branch.trim()) ?? null;
+  // (ข้อมูลเดิมที่ชื่อสาขาสะกดต่างจากตาราง ก็จับคู่ด้วยรหัสสาขาได้)
+  const branch = exactBranch(f.branch, branches);
   const locked = branch ? branchLockedFields(branch) : {};
-  const setBranch = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const b = branches.find((x) => x.label === e.target.value.trim());
-    setF({ ...f, branch: e.target.value, ...(b ? branchLockedFields(b) : {}) });
-  };
+  // ค่าที่แสดง/บันทึก = ค่าตามสาขาทับค่าในฟอร์ม (คนที่มีสาขาอยู่แล้วแต่ TA ยังว่าง ก็เห็น TA ของสาขาทันที)
+  const v: Form = { ...f, ...locked };
+  const setBranch = (text: string) => setF({ ...f, branch: text });
 
   async function submit(e: React.FormEvent) {
     e.preventDefault();
     setBusy(true);
-    const err = await onSubmit({ ...f, phone: f.phone.replace(/\D/g, ''), startDate: f.startDate || null, deadline: f.deadline || null });
+    const err = await onSubmit({ ...v, phone: v.phone.replace(/\D/g, ''), startDate: v.startDate || null, deadline: v.deadline || null });
     setBusy(false);
     setError(err);
   }
@@ -86,7 +87,7 @@ export function ApplicantInfoForm({
           {byBranch && <span className="font-normal text-muted"> · ตามสาขา</span>}
         </span>
         <input
-          value={f[k]}
+          value={v[k]}
           onChange={set(k)}
           className={`${INPUT} ${byBranch ? 'bg-surface text-muted' : ''}`}
           {...props}
@@ -101,7 +102,10 @@ export function ApplicantInfoForm({
       <div className="grid gap-3 sm:grid-cols-2">
         {field('name', 'ชื่อ-นามสกุล', { required: true })}
         {field('phone', 'เบอร์โทร (ผู้สมัครใช้ผูก LINE)', { inputMode: 'numeric', placeholder: '08xxxxxxxx' })}
-        {field('branch', 'สาขา', { list: 'applicant-branch-options', placeholder: 'พิมพ์เพื่อค้นหาสาขา', onChange: setBranch }, true)}
+        <label className="block space-y-1 sm:col-span-2">
+          <span className="text-sm font-medium">สาขา</span>
+          <BranchPicker value={f.branch} branches={branches} onChange={setBranch} className={INPUT} />
+        </label>
         {field('position', 'ตำแหน่ง')}
         {field('company', 'บริษัท (Com7 / Double7)', { list: 'applicant-company-options' })}
         {field('startDate', 'วันที่เริ่มงาน', { type: 'date' })}
@@ -113,11 +117,6 @@ export function ApplicantInfoForm({
           <textarea value={f.notes} onChange={set('notes')} rows={2} className={`${INPUT} h-auto py-2`} />
         </label>
       </div>
-      <datalist id="applicant-branch-options">
-        {branches.map((b) => (
-          <option key={b.id} value={b.label} />
-        ))}
-      </datalist>
       <datalist id="applicant-company-options">
         <option value="Com7" />
         <option value="Double7" />

@@ -75,8 +75,47 @@ export interface BranchRef {
   label: string;
   company: string;
   shopName?: string;
+  /** รหัสสาขา — label ในตารางเป็น "<รหัส> - <ชื่อร้าน>" */
+  shopCode?: string;
   ta?: string;
   intern?: string;
+}
+
+/** รหัสสาขาที่ขึ้นต้นข้อความ: "9 - ID 9_BN_Zeer" / "ID3180: Studio7" → "9" / "3180" */
+export function leadingShopCode(text: string): string | null {
+  return text.match(/^\s*(?:id\s*)?(\d+)\s*[-:]/i)?.[1] ?? null;
+}
+
+/**
+ * สาขาที่ข้อความนี้หมายถึงแน่ๆ: ตรงทั้งข้อความ (ไม่สนตัวพิมพ์/ช่องว่างซ้ำ) หรือรหัสสาขาตรงกัน
+ * ใช้ตอนกรอกฟอร์ม (ไม่จับแบบคร่าวๆ — กำลังพิมพ์อยู่จะได้ไม่ล็อกผิดสาขา)
+ */
+export function exactBranch<T extends BranchRef>(text: string, branches: T[]): T | null {
+  const t = squash(text);
+  if (!t) return null;
+  const code = leadingShopCode(text);
+  return (
+    branches.find((b) => squash(b.label) === t) ??
+    (code ? branches.find((b) => (b.shopCode ?? '').trim() === code) : undefined) ??
+    null
+  );
+}
+
+const squash = (s: string) => s.trim().toLowerCase().replace(/\s+/g, ' ');
+/** ตัดเครื่องหมาย (- _ : ( ) ' ’ .) ให้เหลือคำ — ค้นหา "bangbon samsung" เจอ "ID 3285  Samsung Big C BangBon" */
+const words = (s: string) => s.toLowerCase().replace(/[^\p{L}\p{N}\p{M}]+/gu, ' ').trim();
+
+/** ค้นหาสาขา: ทุกคำที่พิมพ์ต้องอยู่ในชื่อสาขา (ลำดับคำไม่สำคัญ) — รหัสสาขาตรงเป๊ะขึ้นก่อน */
+export function searchBranches<T extends BranchRef>(query: string, branches: T[], limit = 30): T[] {
+  const tokens = words(query).split(' ').filter(Boolean);
+  if (!tokens.length) return [];
+  const hits = branches.filter((b) => {
+    const hay = words(`${b.label} ${b.shopName ?? ''}`);
+    return tokens.every((t) => hay.includes(t));
+  });
+  const q = query.trim();
+  hits.sort((a, b) => Number((b.shopCode ?? '') === q) - Number((a.shopCode ?? '') === q));
+  return hits.slice(0, limit);
 }
 
 /**
@@ -95,7 +134,7 @@ export function findBranch(text: string, branches: Array<BranchRef>): BranchRef 
   const t = text.trim().toLowerCase();
   if (!t) return null;
   return (
-    branches.find((b) => b.label.toLowerCase() === t) ??
+    exactBranch(text, branches) ??
     branches.find((b) => (b.shopName ?? '').toLowerCase() === t) ??
     branches.find((b) => b.label.toLowerCase().includes(t) || (!!b.shopName && t.includes(b.shopName.toLowerCase()))) ??
     null

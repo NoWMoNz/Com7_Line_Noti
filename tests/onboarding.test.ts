@@ -1,6 +1,8 @@
 import { describe, expect, it } from 'vitest';
 import {
   branchLockedFields,
+  exactBranch,
+  searchBranches,
   buildOnboardBubble,
   cleanBranchDisplay,
   DEFAULT_ONBOARD_TEMPLATES,
@@ -124,5 +126,32 @@ describe('branchLockedFields — ค่าที่ต้องตามตา�
 
   it('สาขาไม่ได้ระบุ TA/Intern → ไม่ล็อก (ให้กรอกเองได้)', () => {
     expect(branchLockedFields({ id: 1, label: 'X', company: 'Com7', ta: '', intern: '' })).toEqual({ company: 'Com7' });
+  });
+});
+
+describe('จับคู่ / ค้นหาสาขา (ข้อมูลจริงจากระบบเดิม)', () => {
+  const branches = [
+    { id: 9, label: '9 - ID9 : BN-Zeer-Rangsit-2.1', company: 'Double7', shopName: 'ID9 : BN-Zeer-Rangsit-2.1', shopCode: '9', ta: 'คุณเอ' },
+    { id: 3285, label: '3285 - ID 3285  Samsung Big C BangBon', company: 'Com7', shopName: 'ID 3285  Samsung Big C BangBon', shopCode: '3285' },
+    { id: 3169, label: '3169 - ID 3169 Samsung Lotus-Ratchaburi', company: 'Com7', shopName: 'ID 3169 Samsung Lotus-Ratchaburi', shopCode: '3169' },
+  ];
+
+  it('ชื่อสาขาสะกดต่างจากตาราง แต่รหัสสาขาตรง → จับคู่ได้', () => {
+    expect(exactBranch('9 - ID 9_BN_Zeer_Rangsit_2.1', branches)?.id).toBe(9);
+    expect(exactBranch('3169 - ID 3169 Sumsung Lotus Ratchaburi', branches)?.id).toBe(3169);
+    expect(findBranch('9 - ID 9_BN_Zeer_Rangsit_2.1', branches)?.id).toBe(9);
+  });
+
+  it('ไม่สนช่องว่างซ้ำ / ตัวพิมพ์ แต่ยังไม่จับตอนพิมพ์ไม่ครบ', () => {
+    expect(exactBranch('3285 - id 3285 samsung big c bangbon', branches)?.id).toBe(3285);
+    expect(exactBranch('Samsung', branches)).toBeNull();
+  });
+
+  it('ค้นหาหลายคำไม่สนลำดับ/เครื่องหมาย และค้นด้วยรหัสได้', () => {
+    expect(searchBranches('bangbon samsung', branches).map((b) => b.id)).toEqual([3285]);
+    expect(searchBranches('lotus ratchaburi', branches).map((b) => b.id)).toEqual([3169]);
+    expect(searchBranches('zeer rangsit', branches).map((b) => b.id)).toEqual([9]);
+    expect(searchBranches('3285', branches)[0].id).toBe(3285);
+    expect(searchBranches('   ', branches)).toEqual([]);
   });
 });

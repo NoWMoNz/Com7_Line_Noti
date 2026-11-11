@@ -66,26 +66,28 @@ interface Row {
 // สาขา → บริษัท
 
 export async function branchOptions(): Promise<BranchOption[]> {
-  const rows = ok(await db().from('branches').select('id, label, company, ta, intern').order('label'), 'branches') as Array<{
+  const rows = ok(await db().from('branches').select('id, label, company, shop_code, ta, intern').order('label'), 'branches') as Array<{
     id: number;
     label: string;
     company: string | null;
+    shop_code: string | null;
     ta: string | null;
     intern: string | null;
   }>;
-  return rows.map((b) => ({ id: b.id, label: b.label, company: b.company ?? '', ta: b.ta ?? '', intern: b.intern ?? '' }));
+  return rows.map((b) => ({ id: b.id, label: b.label, company: b.company ?? '', shopCode: b.shop_code ?? '', ta: b.ta ?? '', intern: b.intern ?? '' }));
 }
 
 async function branchIndex() {
-  const rows = ok(await db().from('branches').select('id, label, company, shop_name, ta, intern'), 'branches') as Array<{
+  const rows = ok(await db().from('branches').select('id, label, company, shop_name, shop_code, ta, intern'), 'branches') as Array<{
     id: number;
     label: string;
     company: string | null;
     shop_name: string;
+    shop_code: string | null;
     ta: string | null;
     intern: string | null;
   }>;
-  return rows.map((b) => ({ id: b.id, label: b.label, company: b.company ?? '', shopName: b.shop_name, ta: b.ta ?? '', intern: b.intern ?? '' }));
+  return rows.map((b) => ({ id: b.id, label: b.label, company: b.company ?? '', shopName: b.shop_name, shopCode: b.shop_code ?? '', ta: b.ta ?? '', intern: b.intern ?? '' }));
 }
 
 function companyOf(row: Row, branches: Awaited<ReturnType<typeof branchIndex>>): string {
