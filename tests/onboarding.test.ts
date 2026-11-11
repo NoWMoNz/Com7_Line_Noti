@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
+  branchLockedFields,
   buildOnboardBubble,
   cleanBranchDisplay,
   DEFAULT_ONBOARD_TEMPLATES,
@@ -109,5 +110,19 @@ describe('สิทธิ์ตาม role (เหมือนระบบเด
     expect(canManageUser('SuperAdmin', 'Developer')).toBe(false);
     expect(canManageUser('SuperAdmin', 'Admin')).toBe(true);
     expect(canManageUser('Admin2', 'Admin')).toBe(false);
+  });
+});
+
+describe('branchLockedFields — ค่าที่ต้องตามตารางสาขา', () => {
+  it('บริษัทตามสาขาเสมอ (ปรับชื่อเป็นมาตรฐาน) และ TA/Intern เมื่อสาขาระบุไว้', () => {
+    expect(branchLockedFields({ id: 1, label: 'X', company: 'DOUBLE 7', ta: ' คุณเอ ', intern: 'คุณบี' })).toEqual({
+      company: 'Double7',
+      ta: 'คุณเอ',
+      intern: 'คุณบี',
+    });
+  });
+
+  it('สาขาไม่ได้ระบุ TA/Intern → ไม่ล็อก (ให้กรอกเองได้)', () => {
+    expect(branchLockedFields({ id: 1, label: 'X', company: 'Com7', ta: '', intern: '' })).toEqual({ company: 'Com7' });
   });
 });

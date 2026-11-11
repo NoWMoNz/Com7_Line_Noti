@@ -4,7 +4,7 @@
  * หน้าผู้สมัคร (LINE MINI App) — ลงทะเบียน → ยินยอม PDPA → รออนุมัติ → ส่งเอกสาร
  *
  * เปิดจาก LINE: LIFF ให้ ID token → server ตรวจกับ LINE เพื่อรู้ว่าเป็นบัญชี LINE ไหน
- * เปิดจากเบราว์เซอร์: ใช้ token ในลิงก์ส่วนตัว (เหมือนระบบเดิม)
+ * เปิดนอกแอป LINE (เช่น LINE บนคอมพิวเตอร์เปิดเบราว์เซอร์): ให้ล็อกอิน LINE ก่อน — ไม่มีลิงก์ส่วนตัวแล้ว
  */
 import { useCallback, useEffect, useRef, useState } from 'react';
 import type { ApplyResponse, ApplyState } from '@/lib/apply/types';
@@ -56,7 +56,7 @@ export function ApplyApp({ liffId }: { liffId: string }) {
     (async () => {
       let info: LiffInfo;
       try {
-        info = await initLiff(liffId);
+        info = await initLiff(liffId, !!readTokenFromUrl());
         setLiff(info);
       } catch {
         setBoot({ phase: 'error', message: 'เปิดผ่าน LINE ไม่สำเร็จ กรุณาปิดแล้วเปิดหน้านี้ใหม่อีกครั้ง' });
@@ -212,7 +212,8 @@ export function ApplyApp({ liffId }: { liffId: string }) {
         name={state.name}
         feedback={state.feedback}
         docs={docs}
-        personalLink={liff.inClient ? null : state.personalLink}
+        form={state.form}
+        inLine={liff.inClient}
         onOpen={openTarget}
       />
     );

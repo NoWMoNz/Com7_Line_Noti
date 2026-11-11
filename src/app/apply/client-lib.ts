@@ -21,16 +21,23 @@ function withTimeout<T>(p: Promise<T>, ms: number): Promise<T> {
 
 /**
  * เริ่ม LIFF แล้วคืนข้อมูลผู้ใช้ LINE
- * - ไม่ได้ตั้ง LIFF ID หรือเปิดในเบราว์เซอร์ทั่วไป → ทำงานแบบเว็บธรรมดา (ใช้ token ในลิงก์)
+ * - ไม่ได้ตั้ง LIFF ID → ทำงานแบบเว็บธรรมดา (ใช้ตอน dev)
+ * - เปิดนอกแอป LINE (เช่น LINE บนคอมพิวเตอร์ที่เปิดลิงก์ในเบราว์เซอร์) และยังไม่ล็อกอิน → พาไปล็อกอิน LINE
+ *   แล้วกลับมาหน้านี้ — ระบบจำผู้สมัครจากบัญชี LINE ไม่ต้องมีลิงก์ส่วนตัว
+ *   (ยกเว้น URL มี token อยู่แล้ว เช่น รีเฟรชหน้า)
  * - เปิดในแอป LINE แต่เริ่ม LIFF ไม่สำเร็จ → throw ให้ผู้ใช้ลองใหม่
  *   (ถ้าปล่อยผ่านเป็นเว็บธรรมดา คนที่ไม่มี token จะลงทะเบียนโดยไม่ผูก LINE)
  */
-export async function initLiff(liffId: string): Promise<LiffInfo> {
+export async function initLiff(liffId: string, hasToken = false): Promise<LiffInfo> {
   if (!liffId) return { inClient: false, idToken: null };
   try {
     const { default: liff } = await import('@line/liff');
     await withTimeout(liff.init({ liffId }), 10_000);
     const inClient = liff.isInClient();
+    if (!inClient && !liff.isLoggedIn() && !hasToken) {
+      liff.login({ redirectUri: window.location.href });
+      return new Promise<LiffInfo>(() => {}); // กำลังไปหน้าล็อกอิน LINE
+    }
     const idToken = liff.isLoggedIn() ? liff.getIDToken() : null;
     if (inClient && !idToken) throw new Error('no id token in LINE client');
     return { inClient, idToken };
@@ -39,6 +46,24 @@ export async function initLiff(liffId: string): Promise<LiffInfo> {
     if (isLineUserAgent()) throw new Error('liff');
     return { inClient: false, idToken: null };
   }
+}
+
+/**
+ * เปิดลิงก์ในเบราว์เซอร์ของเครื่อง (Safari/Chrome) — ในแอป LINE ดาวน์โหลดไฟล์ไม่ได้
+ * นอก LINE → แท็บใหม่ตามปกติ
+ */
+export async function openInBrowser(path: string, inClient: boolean): Promise<void> {
+  const url = new URL(path, window.location.origin).toString();
+  if (inClient) {
+    try {
+      const { default: liff } = await import('@line/liff');
+      liff.openWindow({ url, external: true });
+      return;
+    } catch (err) {
+      console.warn('[apply] liff.openWindow failed', err);
+    }
+  }
+  window.open(url, '_blank', 'noopener');
 }
 
 /** token จาก URL — รองรับรูปแบบ liff.state ที่ LINE ส่งมาตอนเปิดครั้งแรก */

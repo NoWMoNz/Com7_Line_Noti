@@ -2,11 +2,12 @@ import 'server-only';
 /**
  * แอดมินเพิ่ม / แก้ / ลบผู้สมัคร (admin_addApplicant / admin_updateApplicant / admin_deleteApplicant เดิม)
  */
+import { normalizeCompany } from '@/lib/apply/forms';
 import { DOCS_BUCKET } from '@/lib/repo/supabase';
 import { getSupabaseAdmin } from '@/lib/supabase/admin';
 import { adminDisplayName } from './auth';
 import { bangkokLocalToIso } from './dates';
-import { findBranch } from './onboarding';
+import { branchLockedFields, findBranch, type BranchRef } from './onboarding';
 import { AdminInputError, getApplicantDetail } from './service';
 import type { AdminProfile, ApplicantDetail, ApplicantInfoInput } from './types';
 
@@ -24,13 +25,15 @@ const text = (v: unknown, max: number, label: string) => {
 };
 
 async function branchesIndex() {
-  const rows = ok(await db().from('branches').select('id, label, company, shop_name'), 'branches') as Array<{
+  const rows = ok(await db().from('branches').select('id, label, company, shop_name, ta, intern'), 'branches') as Array<{
     id: number;
     label: string;
     company: string | null;
     shop_name: string;
+    ta: string | null;
+    intern: string | null;
   }>;
-  return rows.map((b) => ({ id: b.id, label: b.label, company: b.company ?? '', shopName: b.shop_name }));
+  return rows.map((b) => ({ id: b.id, label: b.label, company: b.company ?? '', shopName: b.shop_name, ta: b.ta ?? '', intern: b.intern ?? '' }));
 }
 
 /** แปลงฟอร์ม → คอลัมน์ (เฉพาะช่องที่ส่งมา) พร้อมตรวจค่า */
@@ -52,10 +55,12 @@ async function toColumns(input: ApplicantInfoInput, selfId: string | null): Prom
     }
     c.phone = phone || null;
   }
+  let branch: BranchRef | null = null;
   if (input.branch !== undefined) {
     const label = text(input.branch, 200, 'สาขา');
+    branch = label ? findBranch(label, await branchesIndex()) : null;
     c.branch_label = label || null;
-    c.branch_id = label ? findBranch(label, await branchesIndex())?.id ?? null : null;
+    c.branch_id = branch?.id ?? null;
   }
   if (input.notes !== undefined) c.notes = text(input.notes, 2000, 'หมายเหตุ');
   if (input.ta !== undefined) c.ta = text(input.ta, 120, 'TA') || null;
@@ -72,6 +77,8 @@ async function toColumns(input: ApplicantInfoInput, selfId: string | null): Prom
     if (iso === undefined) throw new AdminInputError('รูปแบบวันกำหนดส่งไม่ถูกต้อง');
     c.deadline = iso;
   }
+  // ผูกสาขาแล้ว → บริษัท / TA / Intern ต้องตามตารางสาขา (ทับค่าที่กรอกมา)
+  if (branch) Object.assign(c, branchLockedFields(branch));
   return c;
 }
 
@@ -82,7 +89,11 @@ async function audit(admin: AdminProfile, action: string, code: string, name: st
 /** HR เพิ่มผู้สมัครเอง — อนุมัติให้ทันทีเหมือนระบบเดิม ผู้สมัครผูก LINE ภายหลังด้วยเบอร์โทรนี้ */
 export async function createApplicantByAdmin(admin: AdminProfile, input: ApplicantInfoInput): Promise<ApplicantDetail> {
   if (!input.name?.trim()) throw new AdminInputError('กรุณากรอกชื่อ-นามสกุล');
+  // เพิ่มแล้วอนุมัติทันที → ต้องรู้บริษัทเพื่อให้ผู้สมัครเห็นแบบฟอร์มที่ถูกต้อง
+  const company = normalizeCompany(input.company);
+  if (!company) throw new AdminInputError('กรุณาระบุบริษัท (Com7 หรือ Double7)');
   const cols = await toColumns(input, null);
+  cols.company = company;
   const row = ok(await db().from('applicants').insert({ ...cols, approved: true }).select('id, code, name').single(), 'create') as {
     id: string;
     code: string;

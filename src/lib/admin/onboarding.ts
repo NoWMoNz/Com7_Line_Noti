@@ -2,6 +2,7 @@
  * แจ้งเตือนเริ่มงาน — ย้ายมาจากส่วน ONBOARDING ของ AdminApplicants.gs (ข้อความ/การ์ดเหมือนเดิม)
  * ไฟล์นี้ไม่มีโค้ดฝั่ง server ใช้ได้ทั้งหน้าเว็บ (ดูตัวอย่างข้อความ) และ server (ส่งจริง)
  */
+import { normalizeCompany } from '@/lib/apply/forms';
 import type { FlexBubble, FlexComponent } from '@/lib/line/types';
 
 export interface OnboardTemplate {
@@ -74,6 +75,19 @@ export interface BranchRef {
   label: string;
   company: string;
   shopName?: string;
+  ta?: string;
+  intern?: string;
+}
+
+/**
+ * ค่าที่ต้องเป็นไปตามตารางสาขา เมื่อผู้สมัครผูกสาขาแล้ว — บริษัทเสมอ, TA/Intern เฉพาะที่สาขาระบุไว้
+ * (สาขาไม่ได้ระบุ TA → ให้กรอกเองได้)
+ */
+export function branchLockedFields(b: BranchRef): { company: string; ta?: string; intern?: string } {
+  const out: { company: string; ta?: string; intern?: string } = { company: normalizeCompany(b.company) ?? b.company };
+  if (b.ta?.trim()) out.ta = b.ta.trim();
+  if (b.intern?.trim()) out.intern = b.intern.trim();
+  return out;
 }
 
 /** หาสาขาจากข้อความ (lookupCompanyForBranch_ เดิม: ตรงกันทั้งข้อความ หรือมีชื่อร้านอยู่ในข้อความ) */

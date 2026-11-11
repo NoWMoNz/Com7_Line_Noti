@@ -200,4 +200,7 @@ export interface BranchOption {
   id: number;
   label: string;
   company: string;
+  /** TA / Intern ประจำสาขา (จากตารางสาขา) — '' = ไม่ได้ระบุ */
+  ta: string;
+  intern: string;
 }

@@ -4,6 +4,7 @@ import Link from 'next/link';
 import { useSearchParams } from 'next/navigation';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import {
+  branchLockedFields,
   fillTemplate,
   formatThaiDate,
   missingOnboardFields,
@@ -276,8 +277,16 @@ function OnboardingForm({
     setSaved(false);
   };
 
-  // เลือกสาขาจากรายการ → เติมบริษัทของสาขาให้ (ถ้ายังไม่ได้ระบุ)
-  const branchCompany = branches.find((b) => b.label === f.branch)?.company ?? '';
+  // เลือกสาขาจากรายการ → บริษัท / TA ตามตารางสาขา (แก้เองไม่ได้)
+  const branch = branches.find((b) => b.label === f.branch.trim()) ?? null;
+  const locked = branch ? branchLockedFields(branch) : null;
+  const branchCompany = locked?.company ?? '';
+  const setBranch = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const b = branches.find((x) => x.label === e.target.value.trim());
+    const l = b ? branchLockedFields(b) : null;
+    setF({ ...f, branch: e.target.value, ...(l ? { company: l.company, ...(l.ta ? { ta: l.ta } : {}) } : {}) });
+    setSaved(false);
+  };
   const preview = useMemo(() => {
     const emp = {
       ...item,
@@ -314,15 +323,15 @@ function OnboardingForm({
           <input value={f.position} onChange={set('position')} className={INPUT} />
         </Field>
         <Field label="สาขา" wide>
-          <input value={f.branch} onChange={set('branch')} list={listId} className={INPUT} placeholder="พิมพ์เพื่อค้นหาสาขา" />
+          <input value={f.branch} onChange={setBranch} list={listId} className={INPUT} placeholder="พิมพ์เพื่อค้นหาสาขา" />
           <datalist id={listId}>
             {branches.map((b) => (
               <option key={b.id} value={b.label} />
             ))}
           </datalist>
         </Field>
-        <Field label="บริษัท (เลือกเทมเพลต)">
-          <select value={f.company} onChange={set('company')} className={INPUT}>
+        <Field label={locked ? 'บริษัท · ตามสาขา' : 'บริษัท (เลือกเทมเพลต)'}>
+          <select value={f.company} onChange={set('company')} disabled={!!locked} className={INPUT}>
             <option value="">{branchCompany ? `ตามสาขา (${branchCompany})` : 'ตามสาขา'}</option>
             {Object.entries(templates)
               .filter(([k]) => k !== 'Default')
@@ -336,8 +345,8 @@ function OnboardingForm({
         <Field label="เงินเดือน (บาท)">
           <input type="number" inputMode="numeric" min={0} value={f.salary} onChange={set('salary')} className={INPUT} />
         </Field>
-        <Field label="TA">
-          <input value={f.ta} onChange={set('ta')} className={INPUT} />
+        <Field label={locked?.ta ? 'TA · ตามสาขา' : 'TA'}>
+          <input value={f.ta} onChange={set('ta')} readOnly={!!locked?.ta} className={`${INPUT} ${locked?.ta ? 'bg-surface text-muted' : ''}`} />
         </Field>
         <Field label="หมายเหตุเพิ่มเติม (ผู้สมัครเห็น)" wide>
           <textarea value={f.notes} onChange={set('notes')} rows={3} className={`${INPUT} h-auto py-2`} />

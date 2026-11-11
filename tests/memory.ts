@@ -20,6 +20,7 @@ export function makeApplicant(n: number, extra: Partial<Applicant> = {}): Applic
     onboardNotified: false,
     pdpaVersion: null,
     pdpaAcceptedAt: null,
+    company: '',
     ...extra,
   };
 }

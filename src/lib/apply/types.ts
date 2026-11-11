@@ -3,6 +3,9 @@
  * (ห้าม import โค้ดฝั่ง server ในไฟล์นี้)
  */
 import type { DocState, SubitemState } from '@/lib/docs/status';
+import type { ApplicationForm } from './forms';
+
+export type { ApplicationForm };
 
 /** หน้าจอที่ผู้สมัครควรเห็น เรียงตามลำดับขั้น */
 export type ApplyScreen = 'register' | 'pdpa' | 'pending' | 'docs';
@@ -44,12 +47,13 @@ export interface ApplyState {
   screen: ApplyScreen;
   /** token ของลิงก์ส่วนตัว — null = ยังไม่มีบัญชี (หน้าลงทะเบียนครั้งแรก) */
   token: string | null;
-  personalLink: string | null;
   name: string;
   phone: string;
   /** ข้อความจากแอดมิน */
   feedback: string;
   maxUploadMb: number;
+  /** แบบฟอร์ม PDF ให้ดาวน์โหลดไปกรอก (ตามบริษัทที่แอดมินเลือกตอนอนุมัติ) — null = ยังไม่รู้บริษัท */
+  form: ApplicationForm | null;
   docs: DocsView | null;
 }
 

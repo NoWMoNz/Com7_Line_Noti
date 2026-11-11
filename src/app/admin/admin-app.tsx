@@ -127,7 +127,7 @@ export function AdminApp() {
 
   const actions: DetailActions = {
     review: (items: ReviewItemInput[], notify) => mutate('reviews', { items, notify }),
-    approve: (approved, notify, docScope) => mutate('approval', { approved, notify, docScope }),
+    approve: (approved, notify, docScope, company) => mutate('approval', { approved, notify, docScope, company }),
     setDocScope: (scope, notify) => mutate('doc-scope', { scope, notify }),
     setClosed: (status, reason) => mutate('closed', { status, reason }),
     feedback: (text, sendLine) => mutate('feedback', { text, sendLine }),

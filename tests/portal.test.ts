@@ -7,6 +7,7 @@ import {
   uploadDocuments,
   type PortalDeps,
 } from '@/lib/apply/portal';
+import { formForCompany, normalizeCompany } from '@/lib/apply/forms';
 import { PDPA_VERSION } from '@/lib/apply/pdpa';
 import { createFakeLine, createMemoryRepo } from './memory';
 
@@ -58,7 +59,7 @@ describe('openSession — ใครกำลังเปิดหน้า', () 
   it('คนที่กด "ลงทะเบียน" ในแชทมาแล้ว (ยังไม่มีชื่อ) → หน้าลงทะเบียนพร้อม token', async () => {
     mem.add({ lineUserId: 'U1' });
     const s = await openSession({ token: null, lineUserId: 'U1' }, deps);
-    expect(s).toMatchObject({ screen: 'register', token: 'tok1', personalLink: 'https://miniapp.line.me/LIFF123?token=tok1' });
+    expect(s).toMatchObject({ screen: 'register', token: 'tok1' });
   });
 
   it('เปิดลิงก์ของคนอื่นที่ผูก LINE ไว้แล้ว → ปฏิเสธ', async () => {
@@ -260,5 +261,27 @@ describe('sniffMime', () => {
     expect(sniffMime(new TextEncoder().encode('RIFF\0\0\0\0WEBPVP8 '))).toBe('image/webp');
     expect(sniffMime(PDF())).toBe('application/pdf');
     expect(sniffMime(new TextEncoder().encode('GIF89a'))).toBeNull();
+  });
+});
+
+describe('แบบฟอร์มเอกสารสมัครงาน (PDF ให้ดาวน์โหลด)', () => {
+  it('แสดงฉบับเดียวตามบริษัทที่แอดมินเลือก', async () => {
+    ready({ company: 'Double7' });
+    const s = await openSession({ token: 'tok1', lineUserId: 'U1' }, deps);
+    expect(s.form?.url).toBe('/forms/double7-2026.pdf');
+  });
+
+  it('ยังไม่รู้บริษัท → ไม่แสดงแบบฟอร์ม', async () => {
+    ready();
+    const s = await openSession({ token: 'tok1', lineUserId: 'U1' }, deps);
+    expect(s.form).toBeNull();
+  });
+
+  it('สะกดชื่อบริษัทต่างกันก็จับคู่ได้', () => {
+    expect(normalizeCompany(' COM7 ')).toBe('Com7');
+    expect(normalizeCompany('Double 7')).toBe('Double7');
+    expect(normalizeCompany('DB7')).toBe('Double7');
+    expect(normalizeCompany('')).toBeNull();
+    expect(formForCompany('com7')?.url).toBe('/forms/com7-2026.pdf');
   });
 });

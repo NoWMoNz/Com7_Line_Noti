@@ -62,4 +62,6 @@ export interface Applicant {
   onboardNotified: boolean;
   pdpaVersion: string | null;
   pdpaAcceptedAt: string | null;
+  /** บริษัท (ที่ตั้งไว้กับผู้สมัคร หรือของสาขา) — '' = ยังไม่รู้ */
+  company: string;
 }

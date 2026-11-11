@@ -1,8 +1,8 @@
 'use client';
 
-import { useState } from 'react';
-import type { DocItemView, DocsView } from '@/lib/apply/types';
+import type { ApplicationForm, DocItemView, DocsView } from '@/lib/apply/types';
 import { Badge, Button, docBadge, Icon, StatusPanel, subitemBadge } from '@/components/ui';
+import { openInBrowser } from './client-lib';
 
 /** ปลายทางเมื่อแตะรายการ: เอกสาร (มีหัวข้อย่อย → หน้ารายการย่อย) หรือหัวข้อย่อย */
 export type DocTarget = { docKey: string; subitemTitle?: string };
@@ -45,38 +45,48 @@ function DocList({ title, docs, onOpen }: { title?: string; docs: DocItemView[];
   );
 }
 
-function PersonalLinkBox({ link }: { link: string }) {
-  const [copied, setCopied] = useState(false);
+/** แบบฟอร์มให้ดาวน์โหลดไปปริ้นท์ กรอก แล้วถ่ายรูปส่ง */
+function FormCard({ form, inLine }: { form: ApplicationForm; inLine: boolean }) {
   return (
-    <div className="rounded-xl border border-line bg-surface p-4">
-      <p className="flex items-center gap-2 text-sm font-semibold">
-        <Icon name="link" className="size-4" /> ลิงก์ส่วนตัวของคุณ
-      </p>
-      <p className="mt-1 text-sm text-muted">ใช้ลิงก์นี้เพื่อกลับมาส่งเอกสารหรือเช็คสถานะได้ทุกเมื่อ (ห้ามส่งต่อให้ผู้อื่น)</p>
-      <div className="mt-3 flex gap-2">
-        <input
-          readOnly
-          value={link}
-          aria-label="ลิงก์ส่วนตัว"
-          onFocus={(e) => e.target.select()}
-          className="h-11 min-w-0 flex-1 rounded-lg border border-line bg-background px-3 text-sm"
-        />
-        <button
-          type="button"
-          onClick={() =>
-            navigator.clipboard
-              .writeText(link)
-              .then(() => {
-                setCopied(true);
-                setTimeout(() => setCopied(false), 1500);
-              })
-              .catch(() => {})
-          }
-          className="h-11 shrink-0 rounded-lg bg-foreground px-4 text-sm font-semibold text-background"
-        >
-          {copied ? 'คัดลอกแล้ว' : 'คัดลอก'}
-        </button>
+    <div className="rounded-xl border border-brand/30 bg-brand-tint p-4">
+      <div className="flex gap-3">
+        <span className="grid size-10 shrink-0 place-items-center rounded-lg bg-background text-brand">
+          <Icon name="file" />
+        </span>
+        <div className="min-w-0 flex-1">
+          <p className="font-semibold leading-snug break-words">{form.fileName}</p>
+          <p className="mt-0.5 text-sm text-muted">
+            แบบฟอร์มเอกสารสมัครงานทั้งหมด ปริ้นท์และกรอกข้อมูลด้วยปากกาน้ำเงินเท่านั้น ก่อนถ่ายรูปอัปโหลด
+          </p>
+        </div>
       </div>
+      <div className="mt-3 flex gap-2">
+        {inLine ? (
+          // ในแอป LINE ดาวน์โหลดไม่ได้ → เปิดในเบราว์เซอร์ของเครื่องแทน
+          <Button className="flex-1" onClick={() => void openInBrowser(form.url, true)}>
+            <Icon name="download" className="size-5" /> ดาวน์โหลดเอกสาร
+          </Button>
+        ) : (
+          <a
+            href={form.url}
+            download={form.fileName}
+            className="inline-flex min-h-12 flex-1 items-center justify-center gap-2 rounded-xl bg-brand px-4 text-[15px] font-semibold text-white hover:bg-brand-strong"
+          >
+            <Icon name="download" className="size-5" /> ดาวน์โหลดเอกสาร
+          </a>
+        )}
+        <a
+          href={form.url}
+          target="_blank"
+          rel="noopener"
+          className="inline-flex min-h-12 shrink-0 items-center justify-center rounded-xl border border-line bg-background px-4 text-[15px] font-semibold hover:bg-surface"
+        >
+          เปิดดู
+        </a>
+      </div>
+      {inLine && (
+        <p className="mt-2 text-xs text-muted">ปุ่มดาวน์โหลดจะเปิดไฟล์ในเบราว์เซอร์ของเครื่อง (Safari / Chrome) เพื่อบันทึกหรือปริ้นท์</p>
+      )}
     </div>
   );
 }
@@ -85,13 +95,15 @@ export function DocsHome({
   name,
   feedback,
   docs,
-  personalLink,
+  form,
+  inLine,
   onOpen,
 }: {
   name: string;
   feedback: string;
   docs: DocsView;
-  personalLink: string | null;
+  form: ApplicationForm | null;
+  inLine: boolean;
   onOpen: (target: DocTarget) => void;
 }) {
   const rejected = docs.required.filter((d) => d.state === 'rejected');
@@ -113,6 +125,8 @@ export function DocsHome({
           <p className="mt-1 whitespace-pre-wrap text-[15px]">{feedback}</p>
         </div>
       )}
+
+      {!docs.complete && form && <FormCard form={form} inLine={inLine} />}
 
       {docs.complete ? (
         <StatusPanel icon="check" tone="brand" title="เอกสารอนุมัติครบแล้ว">
@@ -178,7 +192,6 @@ export function DocsHome({
       <DocList title="เอกสารที่ต้องส่ง" docs={docs.required} onOpen={open} />
       <DocList title="เอกสารเพิ่มเติม (ถ้ามี)" docs={docs.optional} onOpen={open} />
 
-      {personalLink && <PersonalLinkBox link={personalLink} />}
     </div>
   );
 }

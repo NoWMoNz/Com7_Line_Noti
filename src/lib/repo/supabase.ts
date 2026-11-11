@@ -7,7 +7,7 @@ const DOC_TYPES_TTL_MS = 60_000;
 
 // ต้องเป็น string literal เดียว (ห้ามต่อด้วย +) — supabase-js อ่าน type ของผลลัพธ์จากข้อความนี้
 const APPLICANT_COLUMNS =
-  'id, code, name, phone, approved, line_user_id, access_token, required_doc_keys, admin_feedback, onboard_notified_at, pdpa_version, pdpa_accepted_at, doc_scope, closed_status';
+  'id, code, name, phone, approved, line_user_id, access_token, required_doc_keys, admin_feedback, onboard_notified_at, pdpa_version, pdpa_accepted_at, doc_scope, closed_status, company, branches(company)';
 
 interface ApplicantRow {
   id: string;
@@ -24,6 +24,9 @@ interface ApplicantRow {
   pdpa_accepted_at: string | null;
   doc_scope: DocScope;
   closed_status: ClosedStatus | null;
+  company: string | null;
+  /** สาขาที่ผูกไว้ (many-to-one) — ใช้หาบริษัทเมื่อไม่ได้ตั้งบริษัทกับผู้สมัครโดยตรง */
+  branches: { company: string | null } | { company: string | null }[] | null;
 }
 
 function toApplicant(r: ApplicantRow): Applicant {
@@ -42,6 +45,7 @@ function toApplicant(r: ApplicantRow): Applicant {
     onboardNotified: !!r.onboard_notified_at,
     pdpaVersion: r.pdpa_version,
     pdpaAcceptedAt: r.pdpa_accepted_at,
+    company: (r.company?.trim() || (Array.isArray(r.branches) ? r.branches[0] : r.branches)?.company?.trim()) ?? '',
   };
 }
 

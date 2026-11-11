@@ -3,6 +3,7 @@
 import Link from 'next/link';
 import { useState } from 'react';
 import type { ApplicantDetail, ApplicantInfoInput, ReviewItemInput } from '@/lib/admin/types';
+import { COMPANIES, normalizeCompany, type Company } from '@/lib/apply/forms';
 import type { ClosedStatus, DocScope } from '@/lib/docs/types';
 import { Badge, Button, ErrorText, Icon } from '@/components/ui';
 import { DOC_SCOPE_LABEL, fmtDateTime, STAGE } from './admin-lib';
@@ -12,8 +13,8 @@ import { DocsReview } from './doc-review';
 export interface DetailActions {
   /** คืนข้อความผิดพลาด หรือ null */
   review: (items: ReviewItemInput[], notify: boolean) => Promise<string | null>;
-  /** docScope = ชุดเอกสารที่ให้ส่ง (ตั้งพร้อมอนุมัติ) */
-  approve: (approved: boolean, notify: boolean, docScope?: DocScope) => Promise<string | null>;
+  /** docScope = ชุดเอกสารที่ให้ส่ง, company = บริษัทที่สมัคร (ตั้งพร้อมอนุมัติ) */
+  approve: (approved: boolean, notify: boolean, docScope?: DocScope, company?: Company) => Promise<string | null>;
   setDocScope: (scope: DocScope, notify: boolean) => Promise<string | null>;
   /** null = คืนสถานะ */
   setClosed: (status: ClosedStatus | null, reason: string) => Promise<string | null>;
@@ -114,12 +115,16 @@ function Card({ title, children }: { title: string; children: React.ReactNode })
 function ApprovalCard({ detail, onApprove }: { detail: ApplicantDetail; onApprove: DetailActions['approve'] }) {
   const [notify, setNotify] = useState(true);
   const [scope, setScope] = useState<DocScope>(detail.docScope);
+  const [company, setCompany] = useState<Company | null>(normalizeCompany(detail.info.company));
+  // ผูกสาขาแล้ว → บริษัทตามตารางสาขา เลือกเองไม่ได้ (เปลี่ยนสาขาได้ที่ "ข้อมูลผู้สมัคร")
+  const byBranch = !!detail.info.branch.trim() && !!normalizeCompany(detail.info.company);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const run = async (approved: boolean) => {
     if (!approved && !window.confirm('ยกเลิกการอนุมัติ? ผู้สมัครจะแนบเอกสารไม่ได้จนกว่าจะอนุมัติอีกครั้ง')) return;
+    if (approved && !company) return setError('กรุณาเลือกบริษัทก่อนอนุมัติ');
     setBusy(true);
-    setError(await onApprove(approved, notify, approved ? scope : undefined));
+    setError(await onApprove(approved, notify, approved ? scope : undefined, approved ? company ?? undefined : undefined));
     setBusy(false);
   };
 
@@ -128,6 +133,7 @@ function ApprovalCard({ detail, onApprove }: { detail: ApplicantDetail; onApprov
       <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-line px-4 py-3">
         <p className="flex items-center gap-2 text-sm">
           <Icon name="check" className="size-4 text-brand" /> อนุมัติให้ส่งเอกสารแล้ว
+          {detail.info.company && <span className="text-muted">· {detail.info.company}</span>}
         </p>
         <button type="button" disabled={busy} onClick={() => run(false)} className="text-sm text-muted underline underline-offset-2 hover:text-danger">
           ยกเลิกการอนุมัติ
@@ -144,6 +150,13 @@ function ApprovalCard({ detail, onApprove }: { detail: ApplicantDetail; onApprov
           ? 'ผู้สมัครยังไม่ได้กรอกชื่อและเบอร์โทร — อนุมัติได้ แต่ผู้สมัครต้องลงทะเบียนให้ครบก่อนจึงจะแนบเอกสารได้'
           : 'ตรวจข้อมูลผู้สมัครแล้ว อนุมัติเพื่อให้เริ่มแนบเอกสารได้'}
       </p>
+      {byBranch ? (
+        <p className="text-sm">
+          บริษัท: <b>{company}</b> <span className="text-muted">· ตามสาขา {detail.info.branch} (ผู้สมัครจะได้แบบฟอร์มเอกสารของบริษัทนี้)</span>
+        </p>
+      ) : (
+        <CompanyChoice value={company} onChange={(c) => { setCompany(c); setError(null); }} />
+      )}
       <ScopeChoice value={scope} onChange={setScope} />
       {detail.lineLinked && (
         <label className="flex cursor-pointer items-center gap-2 text-sm">
@@ -152,10 +165,32 @@ function ApprovalCard({ detail, onApprove }: { detail: ApplicantDetail; onApprov
         </label>
       )}
       <ErrorText>{error}</ErrorText>
-      <Button busy={busy} onClick={() => run(true)} className="sm:w-auto">
+      <Button busy={busy} disabled={!company} onClick={() => run(true)} className="sm:w-auto">
         อนุมัติให้ส่งเอกสาร
       </Button>
     </Card>
+  );
+}
+
+/** บริษัทที่สมัคร — กำหนดว่าผู้สมัครจะเห็นแบบฟอร์มเอกสารของบริษัทไหน */
+function CompanyChoice({ value, onChange }: { value: Company | null; onChange: (v: Company) => void }) {
+  return (
+    <fieldset className="grid grid-cols-2 gap-2">
+      <legend className="mb-1 text-sm font-medium">
+        บริษัทที่สมัคร <span className="font-normal text-muted">(ผู้สมัครจะได้แบบฟอร์มเอกสารของบริษัทนี้)</span>
+      </legend>
+      {COMPANIES.map((c) => (
+        <label
+          key={c}
+          className={`flex cursor-pointer items-center gap-2 rounded-lg border p-3 text-sm font-medium ${
+            value === c ? 'border-brand bg-brand-tint' : 'border-line hover:bg-surface'
+          }`}
+        >
+          <input type="radio" name="company" checked={value === c} onChange={() => onChange(c)} className="size-4 accent-brand" />
+          {c}
+        </label>
+      ))}
+    </fieldset>
   );
 }
 

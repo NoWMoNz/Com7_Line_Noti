@@ -6,6 +6,7 @@ import 'server-only';
 import type { SupabaseClient } from '@supabase/supabase-js';
 import { requiredDocsFor, summarizeApplicantDocs } from '@/lib/docs/status';
 import type { Applicant, ClosedStatus, DocReview, DocScope, DocType, FileSlotRef, ReviewStatus } from '@/lib/docs/types';
+import { normalizeCompany } from '@/lib/apply/forms';
 import { serverEnv } from '@/lib/env';
 import { createLineClient } from '@/lib/line/client';
 import { DEFAULT_LOGO_URL } from '@/lib/line/flex';
@@ -24,6 +25,7 @@ import {
   countPendingReview,
   validateReviewItems,
 } from './logic';
+import { findBranch } from './onboarding';
 import type {
   AdminDocView,
   AdminProfile,
@@ -90,6 +92,7 @@ const toApplicant = (r: Row): Applicant => ({
   onboardNotified: !!r.onboard_notified_at,
   pdpaVersion: r.pdpa_version,
   pdpaAcceptedAt: r.pdpa_accepted_at,
+  company: r.company?.trim() ?? '',
 });
 
 function ok<T>(res: { data: T; error: { message: string } | null }, what: string): T {
@@ -548,14 +551,37 @@ export async function setDocScope(admin: AdminProfile, id: string, rawScope: unk
   return getApplicantDetail(id);
 }
 
-export async function setApproval(admin: AdminProfile, id: string, approved: boolean, notify: boolean) {
+/** บริษัทของสาขาที่ผู้สมัครผูกไว้ (ตามตารางสาขา) — ไม่มีสาขา/หาไม่เจอ → null */
+async function branchCompanyOf(branchLabel: string | null): Promise<string | null> {
+  if (!branchLabel?.trim()) return null;
+  const rows = ok(await db().from('branches').select('id, label, company, shop_name'), 'branches') as Array<{
+    id: number;
+    label: string;
+    company: string | null;
+    shop_name: string;
+  }>;
+  const b = findBranch(branchLabel, rows.map((r) => ({ id: r.id, label: r.label, company: r.company ?? '', shopName: r.shop_name })));
+  return b?.company ?? null;
+}
+
+/**
+ * อนุมัติต้องรู้บริษัท (Com7 / Double7) — ผู้สมัครจะเห็นแบบฟอร์มเอกสารของบริษัทนั้น
+ * ผูกสาขาแล้ว → ใช้บริษัทตามตารางสาขาเสมอ; ไม่มีสาขา → ใช้ที่แอดมินเลือก (หรือที่ตั้งไว้แล้ว)
+ */
+export async function setApproval(admin: AdminProfile, id: string, approved: boolean, notify: boolean, company?: unknown) {
   const row = await loadRow(id);
-  ok(await db().from('applicants').update({ approved }).eq('id', id), 'set approval');
+  const patch: Record<string, unknown> = { approved };
+  if (approved) {
+    const c = normalizeCompany(await branchCompanyOf(row.branch_label)) ?? normalizeCompany(company) ?? normalizeCompany(row.company);
+    if (!c) throw new AdminInputError('กรุณาเลือกบริษัท (Com7 หรือ Double7) ก่อนอนุมัติ');
+    patch.company = c;
+  }
+  ok(await db().from('applicants').update(patch).eq('id', id), 'set approval');
   await audit(
     admin,
     approved ? 'อนุมัติผู้สมัคร' : 'ยกเลิกการอนุมัติ',
     row,
-    approved ? 'อนุมัติให้ผู้สมัครเริ่มอัปโหลดเอกสารได้' : 'ยกเลิกสิทธิ์อัปโหลดเอกสารชั่วคราว',
+    approved ? `อนุมัติให้ผู้สมัครเริ่มอัปโหลดเอกสารได้ (บริษัท ${patch.company})` : 'ยกเลิกสิทธิ์อัปโหลดเอกสารชั่วคราว',
     'approved',
   );
   if (approved && !row.approved && notify) {

@@ -13,9 +13,10 @@
 import { requiredDocsFor, summarizeApplicantDocs, type DocStatus } from '@/lib/docs/status';
 import type { Applicant, DocReview, DocType, FileSlotRef } from '@/lib/docs/types';
 import { buildDocsCompleteFlex, buildNotifyFlex } from '@/lib/line/flex';
-import { buildAppLink, buildPersonalLink, type HandlerConfig } from '@/lib/line/handler';
+import { buildAppLink, type HandlerConfig } from '@/lib/line/handler';
 import type { LineApi } from '@/lib/line/types';
 import type { Repo } from '@/lib/repo/types';
+import { formForCompany } from './forms';
 import { PDPA_VERSION } from './pdpa';
 import type { ApplyErrorCode, ApplyState, DocItemView, DocsView } from './types';
 
@@ -152,11 +153,11 @@ export async function buildState(applicant: Applicant, deps: PortalDeps): Promis
   const base: ApplyState = {
     screen: 'register',
     token: applicant.accessToken,
-    personalLink: buildPersonalLink(deps.config, applicant.accessToken),
     name: applicant.name,
     phone: applicant.phone ?? '',
     feedback: applicant.adminFeedback.trim(),
     maxUploadMb: Math.round(deps.config.maxUploadBytes / 1024 / 1024),
+    form: formForCompany(applicant.company),
     docs: null,
   };
   if (!isProfileComplete(applicant)) return base;
@@ -171,11 +172,11 @@ export function emptyState(deps: PortalDeps): ApplyState {
   return {
     screen: 'register',
     token: null,
-    personalLink: null,
     name: '',
     phone: '',
     feedback: '',
     maxUploadMb: Math.round(deps.config.maxUploadBytes / 1024 / 1024),
+    form: null,
     docs: null,
   };
 }

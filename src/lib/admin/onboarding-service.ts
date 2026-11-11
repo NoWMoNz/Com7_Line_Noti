@@ -11,9 +11,11 @@ import { createSupabaseRepo } from '@/lib/repo/supabase';
 import { getSupabaseAdmin } from '@/lib/supabase/admin';
 import { AdminAuthError, adminDisplayName } from './auth';
 import {
+  branchLockedFields,
   buildOnboardBubble,
   fillTemplate,
   findBranch,
+  type BranchRef,
   mergeTemplates,
   missingOnboardFields,
   ONBOARD_TEMPLATES_KEY,
@@ -64,18 +66,26 @@ interface Row {
 // สาขา → บริษัท
 
 export async function branchOptions(): Promise<BranchOption[]> {
-  const rows = ok(await db().from('branches').select('id, label, company').order('label'), 'branches') as BranchOption[];
-  return rows.map((b) => ({ id: b.id, label: b.label, company: b.company ?? '' }));
+  const rows = ok(await db().from('branches').select('id, label, company, ta, intern').order('label'), 'branches') as Array<{
+    id: number;
+    label: string;
+    company: string | null;
+    ta: string | null;
+    intern: string | null;
+  }>;
+  return rows.map((b) => ({ id: b.id, label: b.label, company: b.company ?? '', ta: b.ta ?? '', intern: b.intern ?? '' }));
 }
 
 async function branchIndex() {
-  const rows = ok(await db().from('branches').select('id, label, company, shop_name'), 'branches') as Array<{
+  const rows = ok(await db().from('branches').select('id, label, company, shop_name, ta, intern'), 'branches') as Array<{
     id: number;
     label: string;
     company: string | null;
     shop_name: string;
+    ta: string | null;
+    intern: string | null;
   }>;
-  return rows.map((b) => ({ id: b.id, label: b.label, company: b.company ?? '', shopName: b.shop_name }));
+  return rows.map((b) => ({ id: b.id, label: b.label, company: b.company ?? '', shopName: b.shop_name, ta: b.ta ?? '', intern: b.intern ?? '' }));
 }
 
 function companyOf(row: Row, branches: Awaited<ReturnType<typeof branchIndex>>): string {
@@ -209,10 +219,12 @@ export async function updateOnboardingInfo(admin: AdminProfile, id: string, inpu
     if (phone && !/^0\d{9}$/.test(phone)) throw new AdminInputError('เบอร์โทรต้องเป็น 10 หลัก ขึ้นต้นด้วย 0');
     patch.phone = phone || null;
   }
+  let branch: BranchRef | null = null;
   if (input.branch !== undefined) {
     const label = text(input.branch, 200, 'สาขา');
+    branch = label ? findBranch(label, await branchIndex()) : null;
     patch.branch_label = label || null;
-    patch.branch_id = label ? findBranch(label, await branchIndex())?.id ?? null : null;
+    patch.branch_id = branch?.id ?? null;
   }
   if (input.company !== undefined) patch.company = text(input.company, 60, 'บริษัท') || null;
   if (input.position !== undefined) patch.position = text(input.position, 120, 'ตำแหน่ง') || null;
@@ -228,6 +240,8 @@ export async function updateOnboardingInfo(admin: AdminProfile, id: string, inpu
     if (n !== null && (!Number.isFinite(n) || n < 0 || n > 10_000_000)) throw new AdminInputError('เงินเดือนไม่ถูกต้อง');
     patch.salary = n;
   }
+  // ผูกสาขาแล้ว → บริษัท / TA / Intern ต้องตามตารางสาขา (ทับค่าที่กรอกมา)
+  if (branch) Object.assign(patch, branchLockedFields(branch));
   patch.onboard_updated_at = new Date().toISOString();
   patch.onboard_updated_by = adminDisplayName(admin);
 

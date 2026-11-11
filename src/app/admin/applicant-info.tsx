@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from 'react';
 import { isoToBangkokLocal } from '@/lib/admin/dates';
+import { branchLockedFields } from '@/lib/admin/onboarding';
 import type { ApplicantDetail, ApplicantInfoInput, BranchOption } from '@/lib/admin/types';
 import { ErrorText } from '@/components/ui';
 import { adminFetch, fmtDateTime } from './admin-lib';
@@ -60,6 +61,13 @@ export function ApplicantInfoForm({
   const [error, setError] = useState<string | null>(null);
   const branches = useBranches();
   const set = (k: keyof Form) => (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => setF({ ...f, [k]: e.target.value });
+  // เลือกสาขาจากรายการ → บริษัท / TA / Intern ตามตารางสาขา (แก้เองไม่ได้)
+  const branch = branches.find((b) => b.label === f.branch.trim()) ?? null;
+  const locked = branch ? branchLockedFields(branch) : {};
+  const setBranch = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const b = branches.find((x) => x.label === e.target.value.trim());
+    setF({ ...f, branch: e.target.value, ...(b ? branchLockedFields(b) : {}) });
+  };
 
   async function submit(e: React.FormEvent) {
     e.preventDefault();
@@ -69,21 +77,33 @@ export function ApplicantInfoForm({
     setError(err);
   }
 
-  const field = (k: keyof Form, label: string, props: React.InputHTMLAttributes<HTMLInputElement> = {}, wide = false) => (
-    <label className={`block space-y-1 ${wide ? 'sm:col-span-2' : ''}`}>
-      <span className="text-sm font-medium">{label}</span>
-      <input value={f[k]} onChange={set(k)} className={INPUT} {...props} />
-    </label>
-  );
+  const field = (k: keyof Form, label: string, props: React.InputHTMLAttributes<HTMLInputElement> = {}, wide = false) => {
+    const byBranch = k in locked;
+    return (
+      <label className={`block space-y-1 ${wide ? 'sm:col-span-2' : ''}`}>
+        <span className="text-sm font-medium">
+          {label}
+          {byBranch && <span className="font-normal text-muted"> · ตามสาขา</span>}
+        </span>
+        <input
+          value={f[k]}
+          onChange={set(k)}
+          className={`${INPUT} ${byBranch ? 'bg-surface text-muted' : ''}`}
+          {...props}
+          readOnly={byBranch || props.readOnly}
+        />
+      </label>
+    );
+  };
 
   return (
     <form onSubmit={submit} className="space-y-3">
       <div className="grid gap-3 sm:grid-cols-2">
         {field('name', 'ชื่อ-นามสกุล', { required: true })}
         {field('phone', 'เบอร์โทร (ผู้สมัครใช้ผูก LINE)', { inputMode: 'numeric', placeholder: '08xxxxxxxx' })}
-        {field('branch', 'สาขา', { list: 'applicant-branch-options', placeholder: 'พิมพ์เพื่อค้นหาสาขา' }, true)}
+        {field('branch', 'สาขา', { list: 'applicant-branch-options', placeholder: 'พิมพ์เพื่อค้นหาสาขา', onChange: setBranch }, true)}
         {field('position', 'ตำแหน่ง')}
-        {field('company', 'บริษัท', { list: 'applicant-company-options' })}
+        {field('company', 'บริษัท (Com7 / Double7)', { list: 'applicant-company-options' })}
         {field('startDate', 'วันที่เริ่มงาน', { type: 'date' })}
         {field('deadline', 'กำหนดส่งเอกสาร (เวลาไทย)', { type: 'datetime-local' })}
         {field('ta', 'TA')}
