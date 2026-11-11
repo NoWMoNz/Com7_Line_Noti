@@ -95,6 +95,14 @@ describe('ลิงก์', () => {
     expect(buildAppLink(config)).toBe('https://miniapp.line.me/LIFF123');
     expect(buildAppLink(config, { doc: 'doc3_id_card' })).toBe('https://miniapp.line.me/LIFF123?doc=doc3_id_card');
     expect(buildPersonalLink(config, 'tok1')).toBe('https://miniapp.line.me/LIFF123?token=tok1');
+
+    // ใช้ LIFF app เดิมแทน MINI App
+    process.env.LINE_APP_LINK = 'liff';
+    try {
+      expect(buildAppLink(config, { doc: 'doc3_id_card' })).toBe('https://liff.line.me/LIFF123?doc=doc3_id_card');
+    } finally {
+      delete process.env.LINE_APP_LINK;
+    }
     expect(buildPersonalLink({ ...config, liffId: '', appBaseUrl: 'https://example.com/' }, 'a b')).toBe('https://example.com/apply?token=a+b');
   });
 

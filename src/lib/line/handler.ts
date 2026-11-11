@@ -54,7 +54,8 @@ export function parseQuery(str: string): Record<string, string> {
 /**
  * ลิงก์หน้าส่งเอกสาร
  * - มี LIFF ID → https://miniapp.line.me/{liffId} (+ ?doc= เปิดเอกสารนั้นทันที / ?token= สำหรับลิงก์ส่วนตัว)
- *   Endpoint URL ของ MINI App ตั้งเป็น https://<โดเมน>/apply — LINE เปิดหน้านั้นพร้อม query เดิม
+ *   ใช้ LIFF app เดิม (ใน LINE Login channel) แทน MINI App → ตั้ง LINE_APP_LINK=liff ได้ https://liff.line.me/{liffId}
+ *   Endpoint URL ตั้งเป็น https://<โดเมน>/apply — LINE เปิดหน้านั้นพร้อม query เดิม
  * - ไม่มี → เปิดหน้าเว็บตรงๆ (ใช้ตอน dev นอก LINE)
  */
 export function buildAppLink(config: HandlerConfig, opts: { token?: string | null; doc?: string } = {}): string {
@@ -62,7 +63,8 @@ export function buildAppLink(config: HandlerConfig, opts: { token?: string | nul
   if (opts.token) q.set('token', opts.token);
   if (opts.doc) q.set('doc', opts.doc);
   const qs = q.toString() ? `?${q}` : '';
-  if (config.liffId) return `https://miniapp.line.me/${config.liffId}${qs}`;
+  const host = process.env.LINE_APP_LINK?.trim().toLowerCase() === 'liff' ? 'liff.line.me' : 'miniapp.line.me';
+  if (config.liffId) return `https://${host}/${config.liffId}${qs}`;
   return `${config.appBaseUrl.replace(/\/$/, '')}/apply${qs}`;
 }
 
