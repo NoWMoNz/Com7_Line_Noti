@@ -129,6 +129,21 @@ export function branchLockedFields(b: BranchRef): { company: string; ta?: string
   return out;
 }
 
+/**
+ * บริษัท / TA / Intern ที่ใช้จริงของผู้สมัคร — มีสาขาในตาราง → ค่าตามสาขาทับค่าที่บันทึกไว้
+ * (คนที่ผูกสาขาไว้ก่อนมีกฎนี้ ก็เห็น TA ของสาขาทันที ไม่ต้องกดแก้ไข-บันทึกใหม่)
+ */
+export function effectiveBranchFields(
+  row: { branch_id?: number | null; branch_label?: string | null; company?: string | null; ta?: string | null; intern?: string | null },
+  branches: BranchRef[],
+): { company: string; ta: string; intern: string } {
+  const base = { company: row.company?.trim() ?? '', ta: row.ta?.trim() ?? '', intern: row.intern?.trim() ?? '' };
+  const b =
+    (row.branch_id ? branches.find((x) => x.id === row.branch_id) : undefined) ??
+    (row.branch_label ? findBranch(row.branch_label, branches) : null);
+  return b ? { ...base, ...branchLockedFields(b) } : base;
+}
+
 /** หาสาขาจากข้อความ (lookupCompanyForBranch_ เดิม: ตรงกันทั้งข้อความ หรือมีชื่อร้านอยู่ในข้อความ) */
 export function findBranch(text: string, branches: Array<BranchRef>): BranchRef | null {
   const t = text.trim().toLowerCase();

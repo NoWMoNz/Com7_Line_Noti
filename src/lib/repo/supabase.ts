@@ -45,7 +45,8 @@ function toApplicant(r: ApplicantRow): Applicant {
     onboardNotified: !!r.onboard_notified_at,
     pdpaVersion: r.pdpa_version,
     pdpaAcceptedAt: r.pdpa_accepted_at,
-    company: (r.company?.trim() || (Array.isArray(r.branches) ? r.branches[0] : r.branches)?.company?.trim()) ?? '',
+    // บริษัทตามตารางสาขาก่อน (ผูกสาขาแล้ว) แล้วค่อยใช้ที่ตั้งไว้กับผู้สมัคร
+    company: ((Array.isArray(r.branches) ? r.branches[0] : r.branches)?.company?.trim() || r.company?.trim()) ?? '',
   };
 }
 

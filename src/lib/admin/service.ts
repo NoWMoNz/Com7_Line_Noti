@@ -25,7 +25,7 @@ import {
   countPendingReview,
   validateReviewItems,
 } from './logic';
-import { findBranch } from './onboarding';
+import { effectiveBranchFields, findBranch, type BranchRef } from './onboarding';
 import type {
   AdminDocView,
   AdminProfile,
@@ -367,7 +367,7 @@ export async function listApplicants(opts: {
 export async function getApplicantDetail(id: string): Promise<ApplicantDetail> {
   const row = await loadRow(id);
   const a = toApplicant(row);
-  const [allDocs, filesRes, reviewsRes] = await Promise.all([
+  const [allDocs, filesRes, reviewsRes, branches] = await Promise.all([
     docTypes(),
     db()
       .from('applicant_files')
@@ -376,7 +376,10 @@ export async function getApplicantDetail(id: string): Promise<ApplicantDetail> {
       .eq('is_current', true)
       .order('created_at'),
     db().from('doc_reviews').select('applicant_id, doc_key, subitem_title, status, reason, reviewed_by, updated_at').eq('applicant_id', id),
+    row.branch_label ? loadBranchRefs() : Promise.resolve([] as BranchRef[]),
   ]);
+  // บริษัท / TA / Intern ตามตารางสาขา (ถ้ามีสาขา)
+  const byBranch = effectiveBranchFields(row, branches);
   const files = ok(filesRes, 'detail files') as Array<{
     id: string;
     doc_key: string;
@@ -464,9 +467,9 @@ export async function getApplicantDetail(id: string): Promise<ApplicantDetail> {
       branch: row.branch_label ?? '',
       notes: row.notes ?? '',
       deadline: row.deadline,
-      ta: row.ta ?? '',
-      intern: row.intern ?? '',
-      company: row.company ?? '',
+      ta: byBranch.ta,
+      intern: byBranch.intern,
+      company: byBranch.company,
       position: row.position ?? '',
       startDate: row.start_date,
     },
@@ -559,21 +562,31 @@ export async function setDocScope(admin: AdminProfile, id: string, rawScope: unk
   return getApplicantDetail(id);
 }
 
-/** บริษัทของสาขาที่ผู้สมัครผูกไว้ (ตามตารางสาขา) — ไม่มีสาขา/หาไม่เจอ → null */
-async function branchCompanyOf(branchLabel: string | null): Promise<string | null> {
-  if (!branchLabel?.trim()) return null;
-  const rows = ok(await db().from('branches').select('id, label, company, shop_name, shop_code'), 'branches') as Array<{
+async function loadBranchRefs(): Promise<BranchRef[]> {
+  const rows = ok(await db().from('branches').select('id, label, company, shop_name, shop_code, ta, intern'), 'branches') as Array<{
     id: number;
     label: string;
     company: string | null;
     shop_name: string;
     shop_code: string | null;
+    ta: string | null;
+    intern: string | null;
   }>;
-  const b = findBranch(
-    branchLabel,
-    rows.map((r) => ({ id: r.id, label: r.label, company: r.company ?? '', shopName: r.shop_name, shopCode: r.shop_code ?? '' })),
-  );
-  return b?.company ?? null;
+  return rows.map((r) => ({
+    id: r.id,
+    label: r.label,
+    company: r.company ?? '',
+    shopName: r.shop_name,
+    shopCode: r.shop_code ?? '',
+    ta: r.ta ?? '',
+    intern: r.intern ?? '',
+  }));
+}
+
+/** บริษัทของสาขาที่ผู้สมัครผูกไว้ (ตามตารางสาขา) — ไม่มีสาขา/หาไม่เจอ → null */
+async function branchCompanyOf(branchLabel: string | null): Promise<string | null> {
+  if (!branchLabel?.trim()) return null;
+  return findBranch(branchLabel, await loadBranchRefs())?.company ?? null;
 }
 
 /**

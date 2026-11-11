@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
   branchLockedFields,
+  effectiveBranchFields,
   exactBranch,
   searchBranches,
   buildOnboardBubble,
@@ -153,5 +154,19 @@ describe('จับคู่ / ค้นหาสาขา (ข้อมูล�
     expect(searchBranches('zeer rangsit', branches).map((b) => b.id)).toEqual([9]);
     expect(searchBranches('3285', branches)[0].id).toBe(3285);
     expect(searchBranches('   ', branches)).toEqual([]);
+  });
+});
+
+describe('effectiveBranchFields — ค่าที่แสดงของคนที่ผูกสาขาไว้แล้ว', () => {
+  const branches = [{ id: 9, label: '9 - ID9 : BN-Zeer', company: 'Double7', shopCode: '9', ta: 'คุณเอ', intern: '' }];
+  it('TA ที่บันทึกไว้ยังว่าง → ใช้ TA ของสาขา (ไม่ต้องแก้ไข-บันทึกใหม่)', () => {
+    expect(effectiveBranchFields({ branch_label: '9 - ID 9_BN_Zeer', company: null, ta: '', intern: 'คุณบี' }, branches)).toEqual({
+      company: 'Double7',
+      ta: 'คุณเอ',
+      intern: 'คุณบี',
+    });
+  });
+  it('ไม่มีสาขา → ใช้ค่าที่บันทึกไว้', () => {
+    expect(effectiveBranchFields({ branch_label: null, company: 'Com7', ta: 'X', intern: null }, branches)).toEqual({ company: 'Com7', ta: 'X', intern: '' });
   });
 });

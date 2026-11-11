@@ -12,6 +12,7 @@ import { getSupabaseAdmin } from '@/lib/supabase/admin';
 import { AdminAuthError, adminDisplayName } from './auth';
 import {
   branchLockedFields,
+  effectiveBranchFields,
   buildOnboardBubble,
   fillTemplate,
   findBranch,
@@ -90,13 +91,8 @@ async function branchIndex() {
   return rows.map((b) => ({ id: b.id, label: b.label, company: b.company ?? '', shopName: b.shop_name, shopCode: b.shop_code ?? '', ta: b.ta ?? '', intern: b.intern ?? '' }));
 }
 
-function companyOf(row: Row, branches: Awaited<ReturnType<typeof branchIndex>>): string {
-  if (row.company?.trim()) return row.company.trim();
-  const byId = row.branch_id ? branches.find((b) => b.id === row.branch_id) : null;
-  return (byId ?? findBranch(row.branch_label ?? '', branches))?.company ?? '';
-}
-
-function toEmployee(row: Row, company: string): OnboardEmployee {
+function toEmployee(row: Row, branches: BranchRef[]): OnboardEmployee {
+  const { company, ta } = effectiveBranchFields(row, branches);
   return {
     name: row.name ?? '',
     phone: row.phone ?? '',
@@ -105,7 +101,7 @@ function toEmployee(row: Row, company: string): OnboardEmployee {
     position: row.position ?? '',
     startDate: row.start_date,
     salary: row.salary === null || row.salary === '' ? null : Number(row.salary) || null,
-    ta: row.ta ?? '',
+    ta,
     notes: row.onboard_notes ?? '',
   };
 }
@@ -176,7 +172,7 @@ export async function listOnboarding(): Promise<OnboardingData> {
       );
       if (!summary.complete) continue; // ต้องอนุมัติครบทุกรายการ ไม่ใช่แค่ส่งครบ
     }
-    const emp = toEmployee(r, companyOf(r, branches));
+    const emp = toEmployee(r, branches);
     items.push({
       id: r.id,
       code: r.code,
@@ -267,7 +263,7 @@ export async function updateOnboardingInfo(admin: AdminProfile, id: string, inpu
   return {
     id: fresh.id,
     code: fresh.code,
-    ...toEmployee(fresh, companyOf(fresh, await branchIndex())),
+    ...toEmployee(fresh, await branchIndex()),
     lineLinked: !!fresh.line_user_id,
     notifiedAt: fresh.onboard_notified_at,
     updatedAt: fresh.onboard_updated_at,
@@ -283,7 +279,7 @@ export async function sendOnboarding(admin: AdminProfile, id: string): Promise<{
   if (row.closed_status) throw new AdminInputError('ใบสมัครนี้ถูกปิดแล้ว (Cancel/Turndown) — คืนสถานะก่อนส่ง');
 
   const [branches, templates] = await Promise.all([branchIndex(), getTemplates()]);
-  const emp = toEmployee(row, companyOf(row, branches));
+  const emp = toEmployee(row, branches);
   const missing = missingOnboardFields(emp);
   if (missing.length) throw new AdminInputError(`กรุณากรอก ${missing.join(', ')} ก่อนส่ง`);
 
