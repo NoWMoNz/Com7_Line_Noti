@@ -38,21 +38,30 @@ export async function selectForApplicants<T>(
   return results.flat();
 }
 
-/** ผู้สมัคร (ไม่ซ้ำ) ที่มีผลตรวจสถานะนี้อย่างน้อย 1 ช่อง — อ่านทีละ 1,000 แถว */
-export async function applicantIdsWithReview(db: SupabaseClient, status: 'pending_review' | 'rejected'): Promise<Set<string>> {
-  const ids = new Set<string>();
+type ReviewKey = { applicant_id: string; doc_key: string; subitem_title: string };
+
+async function reviewKeys(db: SupabaseClient, status: 'pending_review' | 'rejected' | 'approved', parentsOnly = false): Promise<ReviewKey[]> {
+  const out: ReviewKey[] = [];
   for (let from = 0; ; from += PAGE) {
-    const res = await db
-      .from('doc_reviews')
-      .select('applicant_id')
-      .eq('status', status)
-      .order('applicant_id')
-      .order('doc_key')
-      .order('subitem_title')
-      .range(from, from + PAGE - 1);
+    let q = db.from('doc_reviews').select('applicant_id, doc_key, subitem_title').eq('status', status);
+    if (parentsOnly) q = q.eq('subitem_title', '');
+    const res = await q.order('applicant_id').order('doc_key').order('subitem_title').range(from, from + PAGE - 1);
     if (res.error) throw new Error(`doc_reviews: ${res.error.message}`);
-    res.data.forEach((r) => ids.add((r as { applicant_id: string }).applicant_id));
+    out.push(...(res.data as ReviewKey[]));
     if (res.data.length < PAGE) break;
   }
-  return ids;
+  return out;
+}
+
+/**
+ * ผู้สมัคร (ไม่ซ้ำ) ที่มีผลตรวจสถานะนี้อย่างน้อย 1 ช่อง — อ่านทีละ 1,000 แถว
+ * "รอตรวจ" ใช้กฎเดียวกับ pendingReviews(): ไม่นับหัวข้อย่อยใต้เอกสารที่อนุมัติทั้งชิ้นแล้ว
+ */
+export async function applicantIdsWithReview(db: SupabaseClient, status: 'pending_review' | 'rejected'): Promise<Set<string>> {
+  if (status === 'rejected') return new Set((await reviewKeys(db, 'rejected')).map((r) => r.applicant_id));
+  const [pending, approvedParents] = await Promise.all([reviewKeys(db, 'pending_review'), reviewKeys(db, 'approved', true)]);
+  const approved = new Set(approvedParents.map((r) => `${r.applicant_id}\u0000${r.doc_key}`));
+  return new Set(
+    pending.filter((r) => !(r.subitem_title !== '' && approved.has(`${r.applicant_id}\u0000${r.doc_key}`))).map((r) => r.applicant_id),
+  );
 }

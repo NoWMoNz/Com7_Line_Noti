@@ -147,14 +147,20 @@ export function ApplicantList({
                       {a.phone || '-'} · {a.code}
                     </p>
                     <div className="mt-1.5 flex flex-wrap items-center gap-1.5">
-                      <Badge tone={stage.tone}>{stage.label}</Badge>
-                      {a.pendingReview > 0 && a.stage !== 'review' && a.stage !== 'cancel' && a.stage !== 'turndown' && (
+                      {a.stage === 'review' && a.pendingReview > 0 ? (
                         <Badge tone="info">รอตรวจ {a.pendingReview}</Badge>
+                      ) : (
+                        <>
+                          <Badge tone={stage.tone}>{stage.label}</Badge>
+                          {a.pendingReview > 0 && a.stage !== 'cancel' && a.stage !== 'turndown' && (
+                            <Badge tone="info">รอตรวจ {a.pendingReview}</Badge>
+                          )}
+                        </>
                       )}
                       {a.approved && a.docScope === 'initial' && <Badge tone="warn">{DOC_SCOPE_LABEL.initial}</Badge>}
                       {a.approved && (
                         <span className="text-xs text-muted">
-                          เอกสาร {a.satisfied}/{a.total}
+                          ส่งแล้ว {a.satisfied}/{a.total}
                         </span>
                       )}
                     </div>

@@ -8,6 +8,15 @@ import { buildNotifyFlex } from '@/lib/line/flex';
 import type { FlexBubble } from '@/lib/line/types';
 import type { ApplicantStage, ReviewItemInput } from './types';
 
+/**
+ * ผลตรวจที่ยังรอ HR จริง — ไม่นับหัวข้อย่อยที่ค้าง "รอตรวจ" ใต้เอกสารที่อนุมัติทั้งชิ้นแล้ว
+ * (ข้อมูลจากระบบเดิมมีแบบนี้ หน้าตรวจก็แสดงเอกสารนั้นว่าอนุมัติแล้ว)
+ */
+export function pendingReviews<T extends Pick<DocReview, 'docKey' | 'subitemTitle' | 'status'>>(reviews: T[]): T[] {
+  const approvedDocs = new Set(reviews.filter((r) => r.subitemTitle === '' && r.status === 'approved').map((r) => r.docKey));
+  return reviews.filter((r) => r.status === 'pending_review' && !(r.subitemTitle !== '' && approvedDocs.has(r.docKey)));
+}
+
 export function applicantStage(applicant: Applicant, summary: ApplicantDocSummary | null, reviews: DocReview[]): ApplicantStage {
   if (applicant.closedStatus) return applicant.closedStatus;
   if (!applicant.name.trim() || !(applicant.phone ?? '').trim()) return 'no_profile';
@@ -16,16 +25,14 @@ export function applicantStage(applicant: Applicant, summary: ApplicantDocSummar
   if (!summary) return 'missing';
   if (summary.complete) return applicant.docScope === 'initial' ? 'initial_complete' : 'complete';
   if (summary.docs.some((d) => d.state === 'rejected')) return 'rejected';
-  if (reviews.some((r) => r.status === 'pending_review') || summary.allSatisfied) return 'review';
+  if (pendingReviews(reviews).length > 0 || summary.allSatisfied) return 'review';
   return 'missing';
 }
 
 /** ช่องที่รอ HR ตรวจ — นับเป็นรายการ (เอกสารที่มีหัวข้อย่อยนับตามหัวข้อย่อย) */
 export function countPendingReview(reviews: DocReview[], docs: DocType[]): number {
   const withSubs = new Set(docs.filter((d) => d.subitems.length > 0).map((d) => d.key));
-  return reviews.filter(
-    (r) => r.status === 'pending_review' && (withSubs.has(r.docKey) ? r.subitemTitle !== '' : r.subitemTitle === ''),
-  ).length;
+  return pendingReviews(reviews).filter((r) => (withSubs.has(r.docKey) ? r.subitemTitle !== '' : r.subitemTitle === '')).length;
 }
 
 export class ReviewInputError extends Error {}
