@@ -15,7 +15,7 @@
  * "ครบสมบูรณ์" (complete) = ทุกเอกสารบังคับถูกแอดมินอนุมัติแล้ว
  * "ส่งครบ" (allSatisfied) = ไม่มีเอกสารที่ยังไม่ส่งหรือต้องแก้ไข (อาจยังรอตรวจ)
  */
-import type { DocReview, DocType, FileSlotRef } from './types';
+import type { DocReview, DocScope, DocType, FileSlotRef } from './types';
 
 export type DocState = 'approved' | 'covered' | 'submitted' | 'rejected' | 'partial' | 'missing';
 export type SubitemState = 'approved' | 'submitted' | 'rejected' | 'missing';
@@ -59,14 +59,23 @@ const slotKey = (docKey: string, subitemTitle: string) => `${docKey}\u0000${subi
  * - มี snapshot → ใช้ตาม snapshot (แม้ภายหลังเอกสารนั้นจะถูกปิด) + ไฟล์รวมที่เปิดใช้งาน
  * - ไม่มี → เอกสารที่เปิดใช้งานปัจจุบัน
  */
-export function requiredDocsFor(requiredDocKeys: string[] | null, allDocs: DocType[]): DocType[] {
+export function requiredDocsFor(requiredDocKeys: string[] | null, allDocs: DocType[], scope: DocScope = 'all'): DocType[] {
   const sorted = [...allDocs].sort((a, b) => a.sortOrder - b.sortOrder);
+  let base = sorted.filter((d) => d.enabled);
   if (requiredDocKeys && requiredDocKeys.length > 0) {
     const wanted = new Set(requiredDocKeys);
     const picked = sorted.filter((d) => wanted.has(d.key) || (d.coversAll && d.enabled));
-    if (picked.some((d) => !d.coversAll)) return picked;
+    if (picked.some((d) => !d.coversAll)) base = picked;
   }
-  return sorted.filter((d) => d.enabled);
+  return scope === 'initial' ? initialDocsOf(base) : base;
+}
+
+/**
+ * ชุด "ส่งเบื้องต้น" = เอกสารที่ติ๊กว่าเป็นเอกสารเบื้องต้น (+ ไฟล์รวม)
+ * ยังไม่ได้ตั้งเอกสารเบื้องต้นเลย → ใช้ทั้งชุด (กันผู้สมัครไม่มีเอกสารให้ส่ง)
+ */
+function initialDocsOf(docs: DocType[]): DocType[] {
+  return docs.some((d) => d.initial && !d.coversAll) ? docs.filter((d) => d.initial || d.coversAll) : docs;
 }
 
 export function summarizeApplicantDocs(

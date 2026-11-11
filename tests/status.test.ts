@@ -94,4 +94,19 @@ describe('requiredDocsFor', () => {
     const docs = DOCS.map((d) => (d.key === 'doc9_health_receipt' ? { ...d, enabled: false } : d));
     expect(requiredDocsFor(['doc9_health_receipt'], docs).map((d) => d.key)).toEqual(['doc0_all_in_one', 'doc9_health_receipt']);
   });
+
+  it('ส่งเบื้องต้น → เฉพาะเอกสารเบื้องต้น + ไฟล์รวม / ส่งทั้งหมด → ทุกเอกสาร', () => {
+    const docs = DOCS.map((d) => (d.key === 'doc9_health_receipt' ? { ...d, initial: true } : d));
+    expect(requiredDocsFor(null, docs, 'initial').map((d) => d.key)).toEqual(['doc0_all_in_one', 'doc9_health_receipt']);
+    expect(requiredDocsFor(null, docs, 'all')).toHaveLength(DOCS.length);
+  });
+
+  it('ส่งเบื้องต้นแต่ยังไม่ได้ตั้งเอกสารเบื้องต้น → ใช้ทั้งชุด', () => {
+    expect(requiredDocsFor(null, DOCS, 'initial')).toHaveLength(DOCS.length);
+  });
+
+  it('เอกสารเบื้องต้นที่ถูกปิดใช้งาน ไม่นับ', () => {
+    const docs = DOCS.map((d) => (d.key === 'doc9_health_receipt' ? { ...d, initial: true, enabled: false } : d));
+    expect(requiredDocsFor(null, docs, 'initial')).toHaveLength(DOCS.length - 1);
+  });
 });

@@ -3,7 +3,7 @@ import 'server-only';
  * แจ้งเตือนเริ่มงาน (admin_getOnboardingList / admin_updateOnboardingInfo / admin_notifyOnboardingOne ของระบบเดิม)
  */
 import { requiredDocsFor, summarizeApplicantDocs } from '@/lib/docs/status';
-import type { ReviewStatus } from '@/lib/docs/types';
+import type { DocScope, ReviewStatus } from '@/lib/docs/types';
 import { serverEnv } from '@/lib/env';
 import { createLineClient } from '@/lib/line/client';
 import { DEFAULT_LOGO_URL } from '@/lib/line/flex';
@@ -34,7 +34,7 @@ function ok<T>(res: { data: T; error: { message: string } | null }, what: string
 }
 
 const COLS =
-  'id, code, name, phone, line_user_id, approved, required_doc_keys, branch_label, branch_id, company, position, start_date, salary, ta, onboard_notes, onboard_notified_at, onboard_updated_at, onboard_updated_by, completed_at';
+  'id, code, name, phone, line_user_id, approved, required_doc_keys, branch_label, branch_id, company, position, start_date, salary, ta, onboard_notes, onboard_notified_at, onboard_updated_at, onboard_updated_by, completed_at, doc_scope, closed_status';
 
 interface Row {
   id: string;
@@ -56,6 +56,8 @@ interface Row {
   onboard_updated_at: string | null;
   onboard_updated_by: string | null;
   completed_at: string | null;
+  doc_scope: DocScope;
+  closed_status: string | null;
 }
 
 // ---------------------------------------------------------------------------
@@ -131,6 +133,7 @@ export async function listOnboarding(): Promise<OnboardingData> {
       .from('applicants')
       .select(COLS)
       .eq('approved', true)
+      .is('closed_status', null)
       .or('completed_at.not.is.null,onboard_notified_at.not.is.null')
       .order('start_date', { ascending: true, nullsFirst: false })
       .limit(1000),
@@ -151,6 +154,8 @@ export async function listOnboarding(): Promise<OnboardingData> {
   const items: OnboardingItem[] = [];
   for (const r of rows) {
     if (!r.onboard_notified_at) {
+      // ส่งเฉพาะเอกสารเบื้องต้น → ยังไม่ถึงขั้นแจ้งเริ่มงาน (HR ต้องเปลี่ยนเป็น "ส่งทั้งหมด" ก่อน)
+      if (r.doc_scope === 'initial') continue;
       const summary = summarizeApplicantDocs(
         requiredDocsFor(r.required_doc_keys, allDocs),
         files.filter((f) => f.applicant_id === r.id).map((f) => ({ docKey: f.doc_key, subitemTitle: f.subitem_title })),
@@ -260,6 +265,7 @@ export async function sendOnboarding(admin: AdminProfile, id: string): Promise<{
   const row = await loadRow(id);
   if (!row.line_user_id) throw new AdminInputError('ผู้สมัครยังไม่ผูกบัญชี LINE');
   if (!row.approved) throw new AdminInputError('ผู้สมัครยังไม่ได้รับการอนุมัติ');
+  if (row.closed_status) throw new AdminInputError('ใบสมัครนี้ถูกปิดแล้ว (Cancel/Turndown) — คืนสถานะก่อนส่ง');
 
   const [branches, templates] = await Promise.all([branchIndex(), getTemplates()]);
   const emp = toEmployee(row, companyOf(row, branches));

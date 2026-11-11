@@ -26,6 +26,8 @@ export interface DocTypeSetting {
   enabled: boolean;
   optional: boolean;
   coversAll: boolean;
+  /** อยู่ในชุด "ส่งเบื้องต้น" */
+  initial: boolean;
   sortOrder: number;
   /** ไฟล์ของเอกสารทั้งชิ้น (ไม่รวมหัวข้อย่อย) */
   fileCount: number;
@@ -38,6 +40,7 @@ export interface DocTypeInput {
   description?: unknown;
   enabled?: unknown;
   optional?: unknown;
+  initial?: unknown;
   /** previousTitle = ชื่อเดิม (ถ้าเปลี่ยนชื่อ) */
   subitems?: Array<{ title?: unknown; optional?: unknown; previousTitle?: unknown; kind?: unknown }>;
 }
@@ -57,7 +60,7 @@ export async function listDocTypes(): Promise<DocTypeSetting[]> {
   const [types, counts] = await Promise.all([
     db()
       .from('doc_types')
-      .select('key, label, description, enabled, optional, covers_all, sort_order, doc_subitems(title, optional, sort_order, kind)')
+      .select('key, label, description, enabled, optional, covers_all, initial, sort_order, doc_subitems(title, optional, sort_order, kind)')
       .order('sort_order'),
     db().from('doc_file_counts').select('doc_key, subitem_title, file_count'),
   ]);
@@ -68,6 +71,7 @@ export async function listDocTypes(): Promise<DocTypeSetting[]> {
     enabled: boolean;
     optional: boolean;
     covers_all: boolean;
+    initial: boolean;
     sort_order: number;
     doc_subitems: Array<{ title: string; optional: boolean; sort_order: number; kind: 'file' | 'check' }>;
   }>;
@@ -81,6 +85,7 @@ export async function listDocTypes(): Promise<DocTypeSetting[]> {
     enabled: r.enabled,
     optional: r.optional,
     coversAll: r.covers_all,
+    initial: r.initial ?? false,
     sortOrder: r.sort_order,
     fileCount: count(r.key, ''),
     subitems: [...r.doc_subitems]
@@ -138,6 +143,7 @@ export async function saveDocType(admin: AdminProfile, input: DocTypeInput): Pro
         description,
         enabled: input.enabled !== false,
         optional: input.optional === true,
+        initial: input.initial === true,
         sort_order: (max[0]?.sort_order ?? 0) + 1,
       }),
       'insert doc',
@@ -151,6 +157,7 @@ export async function saveDocType(admin: AdminProfile, input: DocTypeInput): Pro
           description,
           ...(input.enabled !== undefined ? { enabled: input.enabled === true } : {}),
           ...(input.optional !== undefined && !existing.covers_all ? { optional: input.optional === true } : {}),
+          ...(input.initial !== undefined && !existing.covers_all ? { initial: input.initial === true } : {}),
         })
         .eq('key', key),
       'update doc',

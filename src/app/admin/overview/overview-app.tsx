@@ -21,7 +21,7 @@ function StatTile({ label, value, hint, href, children }: { label: string; value
   return href ? (
     <Link href={href} className="group block rounded-xl border border-line p-4 transition-colors hover:border-brand/50 hover:bg-surface">
       {body}
-      <span className="mt-2 flex items-center gap-1 text-xs font-medium text-brand opacity-0 transition-opacity group-hover:opacity-100">
+      <span className="mt-2 flex items-center gap-1 text-xs font-medium text-brand opacity-60 transition-opacity group-hover:opacity-100">
         เปิดดู <Icon name="chevronRight" className="size-3" />
       </span>
     </Link>
@@ -38,6 +38,7 @@ const TYPE_LABEL: Record<string, string> = {
   docs_complete: 'ส่งเอกสารครบ',
   onboarding: 'แจ้งเริ่มงาน',
   custom: 'ข้อความจาก HR',
+  more_docs: 'ขอเอกสารเพิ่มเติม',
 };
 
 export function OverviewApp() {
@@ -70,7 +71,7 @@ export function OverviewApp() {
               </h2>
               <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
                 <StatTile label="รออนุมัติผู้สมัคร" value={data.pendingApproval} hint="ลงทะเบียนครบ รอ HR อนุมัติ" href="/admin?filter=pending_approval" />
-                <StatTile label="มีไฟล์รอตรวจ" value={data.waitingReview} hint="ผู้สมัครที่มีเอกสารรอ HR ตรวจ" href="/admin?filter=approved">
+                <StatTile label="มีไฟล์รอตรวจ" value={data.waitingReview} hint="ผู้สมัครที่มีเอกสารรอ HR ตรวจ" href="/admin?view=review">
                   <dl className="mt-3 grid grid-cols-3 gap-1 border-t border-line pt-2 text-center text-xs">
                     <div>
                       <dt className="text-muted">ไม่ถึงวัน</dt>
@@ -90,7 +91,7 @@ export function OverviewApp() {
                   </dl>
                 </StatTile>
                 <StatTile label="ส่งครบ รอแจ้งเริ่มงาน" value={data.submittedAll} hint="ส่งเอกสารครบแล้ว (บางคนอาจยังรอตรวจ)" href="/admin/onboarding" />
-                <StatTile label="ไม่ขยับเกิน 3 วัน" value={data.stale3d} hint="อนุมัติแล้วแต่ยังส่งไม่ครบ และไม่มีการส่งไฟล์ 3 วัน" href="/admin?filter=approved" />
+                <StatTile label="ไม่ขยับเกิน 3 วัน" value={data.stale3d} hint="อนุมัติแล้วแต่ยังส่งไม่ครบ และไม่มีการส่งไฟล์ 3 วัน" href="/admin?view=stale3d" />
               </div>
             </section>
 
@@ -98,12 +99,13 @@ export function OverviewApp() {
               <h2 id="all-title" className="font-semibold">
                 ผู้สมัครทั้งหมด
               </h2>
-              <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-5">
-                <StatTile label="ทั้งหมด" value={data.total} href="/admin" />
-                <StatTile label="ใหม่ใน 7 วัน" value={data.newLast7d} />
-                <StatTile label="ยังไม่กรอกข้อมูล" value={data.noProfile} hint="กดลงทะเบียนในแชทแล้วแต่ยังไม่กรอก" />
-                <StatTile label="รอผู้สมัครแก้เอกสาร" value={data.waitingApplicantFix} />
-                <StatTile label="แจ้งเริ่มงานแล้ว" value={data.onboarded} />
+              <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+                <StatTile label="กำลังดำเนินการ" value={data.total} hint="ไม่รวม Cancel / Turndown" href="/admin" />
+                <StatTile label="ใหม่ใน 7 วัน" value={data.newLast7d} href="/admin?view=new7d" />
+                <StatTile label="ยังไม่กรอกข้อมูล" value={data.noProfile} hint="กดลงทะเบียนในแชทแล้วแต่ยังไม่กรอก" href="/admin?view=no_profile" />
+                <StatTile label="รอผู้สมัครแก้เอกสาร" value={data.waitingApplicantFix} href="/admin?view=rejected" />
+                <StatTile label="แจ้งเริ่มงานแล้ว" value={data.onboarded} href="/admin/onboarding?tab=sent" />
+                <StatTile label="Cancel / Turndown" value={data.closed} hint="ปิดใบสมัครแล้ว" href="/admin?filter=closed" />
               </div>
             </section>
 

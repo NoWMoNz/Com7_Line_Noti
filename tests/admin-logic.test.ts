@@ -44,6 +44,17 @@ describe('applicantStage', () => {
     const reviews = DOCS.filter((d) => !d.coversAll).map((d) => rv(d.key, '', 'approved'));
     expect(applicantStage(person(), summarizeApplicantDocs(DOCS, [], reviews), reviews)).toBe('complete');
   });
+
+  it('ส่งเบื้องต้นและอนุมัติครบ → initial_complete (ยังไม่ไปหน้าแจ้งเริ่มงาน)', () => {
+    const reviews = DOCS.filter((d) => !d.coversAll).map((d) => rv(d.key, '', 'approved'));
+    expect(applicantStage(person({ docScope: 'initial' }), summarizeApplicantDocs(DOCS, [], reviews), reviews)).toBe('initial_complete');
+  });
+
+  it('ปิดใบสมัครแล้ว → cancel / turndown มาก่อนทุกสถานะ', () => {
+    expect(applicantStage(person({ closedStatus: 'cancel' }), null, [])).toBe('cancel');
+    expect(applicantStage(person({ closedStatus: 'turndown', onboardNotified: true }), null, [])).toBe('turndown');
+    expect(applicantStage(makeApplicant(1, { closedStatus: 'cancel' }), null, [])).toBe('cancel');
+  });
 });
 
 describe('countPendingReview', () => {
@@ -95,6 +106,20 @@ describe('completionChange', () => {
     expect(completionChange(false, '2026-01-01', ['x'], DOCS)).toEqual({ completedAt: null });
     expect(completionChange(true, '2026-01-01', ['x'], DOCS)).toEqual({});
     expect(completionChange(false, null, null, DOCS)).toEqual({});
+  });
+  it('ส่งเบื้องต้นครบ → ตั้งวันที่แต่ไม่ล็อกชุดเอกสาร', () => {
+    const c = completionChange(true, null, null, DOCS, 'initial');
+    expect(c.completedAt).toBeTruthy();
+    expect(c.requiredDocKeys).toBeUndefined();
+  });
+});
+
+describe('buildReviewMessages', () => {
+  const base = { applicantName: 'สมชาย', allDocs: DOCS, linkFor: () => 'https://x', logoUrl: null };
+  const approvedItem: ReviewItemInput = { docKey: 'doc9_health_receipt', subitemTitle: '', status: 'approved', reason: '' };
+  it('ครบชุดเบื้องต้น → ข้อความ "เอกสารเบื้องต้นผ่านครบ"', () => {
+    const [m] = buildReviewMessages({ ...base, items: [approvedItem], becameComplete: true, initialOnly: true });
+    expect(m.altText).toContain('เอกสารเบื้องต้น');
   });
 });
 

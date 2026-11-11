@@ -3,17 +3,18 @@
  * (ย้ายมาจาก admin_setDocReview / syncCompletedAt_ / notifyRejectedDoc_ / notifyApprovedDoc_ ของระบบเดิม)
  */
 import type { ApplicantDocSummary } from '@/lib/docs/status';
-import type { Applicant, DocReview, DocType } from '@/lib/docs/types';
+import type { Applicant, DocReview, DocScope, DocType } from '@/lib/docs/types';
 import { buildNotifyFlex } from '@/lib/line/flex';
 import type { FlexBubble } from '@/lib/line/types';
 import type { ApplicantStage, ReviewItemInput } from './types';
 
 export function applicantStage(applicant: Applicant, summary: ApplicantDocSummary | null, reviews: DocReview[]): ApplicantStage {
+  if (applicant.closedStatus) return applicant.closedStatus;
   if (!applicant.name.trim() || !(applicant.phone ?? '').trim()) return 'no_profile';
   if (!applicant.approved) return 'pending_approval';
   if (applicant.onboardNotified) return 'onboarded';
   if (!summary) return 'missing';
-  if (summary.complete) return 'complete';
+  if (summary.complete) return applicant.docScope === 'initial' ? 'initial_complete' : 'complete';
   if (summary.docs.some((d) => d.state === 'rejected')) return 'rejected';
   if (reviews.some((r) => r.status === 'pending_review') || summary.allSatisfied) return 'review';
   return 'missing';
@@ -61,17 +62,20 @@ export function validateReviewItems(items: unknown, allDocs: DocType[]): ReviewI
  *
  * - ครบครั้งแรก → ตั้งวันที่ + ล็อกชุดเอกสาร (เพิ่มเอกสารทีหลังจะไม่กระทบคนนี้)
  * - ไม่ครบแล้ว (เพิ่งโดนตีกลับ) → ล้างวันที่ แต่คง snapshot ไว้
+ * - ส่งเฉพาะเบื้องต้น → ไม่ล็อก snapshot (ไม่งั้นเปลี่ยนเป็น "ส่งทั้งหมด" ทีหลังจะเห็นแค่ชุดเบื้องต้น)
  */
 export function completionChange(
   complete: boolean,
   completedAt: string | null,
   requiredDocKeys: string[] | null,
   currentRequired: DocType[],
+  scope: DocScope = 'all',
 ): { completedAt?: string | null; requiredDocKeys?: string[] } {
   if (complete && !completedAt) {
+    const lock = !requiredDocKeys?.length && scope === 'all';
     return {
       completedAt: new Date().toISOString(),
-      ...(requiredDocKeys?.length ? {} : { requiredDocKeys: currentRequired.filter((d) => !d.coversAll).map((d) => d.key) }),
+      ...(lock ? { requiredDocKeys: currentRequired.filter((d) => !d.coversAll).map((d) => d.key) } : {}),
     };
   }
   if (!complete && completedAt) return { completedAt: null };
@@ -98,6 +102,8 @@ export function buildReviewMessages(opts: {
   items: ReviewItemInput[];
   allDocs: DocType[];
   becameComplete: boolean;
+  /** ผู้สมัครส่งเฉพาะเอกสารเบื้องต้น — ข้อความ "ครบ" บอกว่าเป็นชุดเบื้องต้น */
+  initialOnly?: boolean;
   /** ลิงก์เปิดหน้าส่งเอกสาร (docKey = เปิดเอกสารนั้นเลย) */
   linkFor: (docKey?: string) => string;
   logoUrl: string | null;
@@ -121,6 +127,19 @@ export function buildReviewMessages(opts: {
         list: labels.length > 1 ? { title: 'รายการที่ต้องแก้ไข', items: labels } : undefined,
         note: { label: 'เหตุผลจาก HR', text: reasons, tone: 'danger' },
         button: { label: 'แนบไฟล์ใหม่', uri: opts.linkFor(rejected[0].docKey) },
+        logoUrl,
+      }),
+    });
+  } else if (opts.becameComplete && opts.initialOnly) {
+    out.push({
+      type: 'all_approved',
+      altText: `เอกสารเบื้องต้นของคุณ${applicantName} ผ่านการตรวจสอบครบแล้ว`,
+      bubble: buildNotifyFlex({
+        tone: 'success',
+        title: 'เอกสารเบื้องต้นผ่านครบ',
+        subtitle: 'อนุมัติโดย HR',
+        greeting: applicantName ? `คุณ${applicantName}` : 'สวัสดีค่ะ',
+        note: { label: 'ขั้นตอนถัดไป', text: 'เจ้าหน้าที่จะติดต่อกลับเพื่อแจ้งขั้นตอนถัดไปทางแชทนี้', tone: 'success' },
         logoUrl,
       }),
     });
@@ -154,6 +173,26 @@ export function buildApprovalMessage(applicantName: string, link: string, logoUr
         tone: 'success',
       },
       button: { label: 'เริ่มแนบเอกสาร', uri: link },
+      logoUrl,
+    }),
+  };
+}
+
+/** HR เปลี่ยนจาก "ส่งเบื้องต้น" เป็น "ส่งทั้งหมด" → แจ้งให้ส่งเอกสารที่เหลือ */
+export function buildMoreDocsMessage(applicantName: string, link: string, logoUrl: string | null) {
+  return {
+    altText: `คุณ${applicantName} กรุณาส่งเอกสารเพิ่มเติมให้ครบทุกรายการ`,
+    bubble: buildNotifyFlex({
+      tone: 'success',
+      title: 'กรุณาส่งเอกสารเพิ่มเติม',
+      greeting: `คุณ${applicantName}
+ผ่านขั้นตอนเบื้องต้นแล้ว`,
+      note: {
+        label: 'ขั้นตอนถัดไป',
+        text: 'กดปุ่มด้านล่างเพื่อแนบเอกสารที่เหลือให้ครบทุกรายการ',
+        tone: 'success',
+      },
+      button: { label: 'แนบเอกสารเพิ่มเติม', uri: link },
       logoUrl,
     }),
   };

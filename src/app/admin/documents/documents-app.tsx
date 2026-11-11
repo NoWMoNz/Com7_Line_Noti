@@ -15,6 +15,7 @@ type Draft = {
   enabled: boolean;
   optional: boolean;
   coversAll: boolean;
+  initial: boolean;
   subitems: Array<{ id: number; title: string; optional: boolean; kind: 'file' | 'check'; previousTitle: string | null; fileCount: number }>;
 };
 
@@ -26,6 +27,7 @@ const toDraft = (d?: DocTypeSetting): Draft => ({
   enabled: d?.enabled ?? true,
   optional: d?.optional ?? false,
   coversAll: d?.coversAll ?? false,
+  initial: d?.initial ?? false,
   subitems: (d?.subitems ?? []).map((s) => ({ id: ++seq, title: s.title, optional: s.optional, kind: s.kind, previousTitle: s.title, fileCount: s.fileCount })),
 });
 
@@ -64,6 +66,10 @@ export function DocumentsApp() {
             <p className="text-sm text-muted">
               รายการเอกสารที่ผู้สมัครต้องส่ง — ผู้สมัครที่ส่งครบไปแล้วจะไม่ถูกบังคับเอกสารที่เพิ่มทีหลัง
             </p>
+            <p className="mt-1 text-sm text-muted">
+              กลุ่มเอกสาร: ติ๊ก <b>เอกสารเบื้องต้น</b> ที่เอกสารที่ต้องการ — ผู้สมัครที่ตั้งเป็น &quot;ส่งเบื้องต้น&quot; จะเห็นเฉพาะเอกสารกลุ่มนี้
+              ส่วน &quot;ส่งทั้งหมด&quot; เห็นทุกรายการ (ตั้งรายคนที่หน้าผู้สมัคร)
+            </p>
           </div>
           {!editing && (
             <Button onClick={() => setEditing(toDraft())} className="sm:w-auto">
@@ -73,6 +79,11 @@ export function DocumentsApp() {
         </div>
 
         <ErrorText>{error}</ErrorText>
+        {docs && !docs.some((d) => d.initial && d.enabled && !d.coversAll) && (
+          <p className="rounded-lg bg-warn-tint p-3 text-sm text-warn">
+            ยังไม่ได้ตั้งเอกสารเบื้องต้น — ผู้สมัครที่ตั้งเป็น &quot;ส่งเบื้องต้น&quot; จะต้องส่งทั้งหมดไปก่อน
+          </p>
+        )}
         {editing && !editing.key && (
           <DocForm draft={editing} onCancel={() => setEditing(null)} onSaved={(d) => (apply({ ok: true, data: d }), setEditing(null))} />
         )}
@@ -114,6 +125,7 @@ export function DocumentsApp() {
                   <div className="flex flex-wrap items-center gap-2">
                     <p className={`font-medium ${d.enabled ? '' : 'text-muted line-through'}`}>{d.label}</p>
                     {d.coversAll && <Badge tone="info">ไฟล์รวม</Badge>}
+                    {d.initial && !d.coversAll && <Badge tone="brand">เบื้องต้น</Badge>}
                     {d.optional && !d.coversAll && <Badge tone="muted">ไม่บังคับ</Badge>}
                     {!d.enabled && <Badge tone="warn">ปิดใช้งาน</Badge>}
                   </div>
@@ -177,6 +189,7 @@ const toDraftPayload = (d: Draft) => ({
   description: d.description,
   enabled: d.enabled,
   optional: d.optional,
+  initial: d.initial,
   subitems: d.subitems.map((s) => ({ title: s.title, optional: s.optional, kind: s.kind, previousTitle: s.previousTitle })),
 });
 
@@ -225,6 +238,12 @@ function DocForm({ draft, onCancel, onSaved }: { draft: Draft; onCancel: () => v
           <label className="flex items-center gap-2 text-sm">
             <input type="checkbox" checked={d.optional} onChange={(e) => setD({ ...d, optional: e.target.checked })} className="size-4 accent-brand" />
             ไม่บังคับ (ไม่นับในความครบถ้วน)
+          </label>
+        )}
+        {!d.coversAll && (
+          <label className="flex items-center gap-2 text-sm">
+            <input type="checkbox" checked={d.initial} onChange={(e) => setD({ ...d, initial: e.target.checked })} className="size-4 accent-brand" />
+            เอกสารเบื้องต้น (อยู่ในชุด &quot;ส่งเบื้องต้น&quot;)
           </label>
         )}
         <label className="flex items-center gap-2 text-sm">

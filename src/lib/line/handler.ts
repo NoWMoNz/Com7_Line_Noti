@@ -147,7 +147,7 @@ async function replyStatus(replyToken: string, lineUserId: string, deps: Handler
   }
 
   const [allDocs, state] = await Promise.all([repo.getDocTypes(), repo.getDocState(applicant.id)]);
-  const summary = summarizeApplicantDocs(requiredDocsFor(applicant.requiredDocKeys, allDocs), state.files, state.reviews);
+  const summary = summarizeApplicantDocs(requiredDocsFor(applicant.requiredDocKeys, allDocs, applicant.docScope), state.files, state.reviews);
   if (summary.allSatisfied || applicant.onboardNotified) {
     await line.reply(replyToken, [
       {

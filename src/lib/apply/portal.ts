@@ -117,7 +117,7 @@ export function buildDocsView(
   files: FileSlotRef[],
   reviews: DocReview[],
 ): DocsView {
-  const docs = requiredDocsFor(applicant.requiredDocKeys, allDocs);
+  const docs = requiredDocsFor(applicant.requiredDocKeys, allDocs, applicant.docScope);
   const summary = summarizeApplicantDocs(docs, files, reviews);
   const allInOneDoc = docs.find((d) => d.coversAll);
   const optionalDocs = docs.filter((d) => d.optional && !d.coversAll);
@@ -368,7 +368,7 @@ export async function uploadDocuments(
   }
 
   const [allDocs, before] = await Promise.all([repo.getDocTypes(), repo.getDocState(applicant.id)]);
-  const docs = requiredDocsFor(applicant.requiredDocKeys, allDocs);
+  const docs = requiredDocsFor(applicant.requiredDocKeys, allDocs, applicant.docScope);
   // อัปโหลดได้เฉพาะเอกสารในชุดของคนนี้ที่ยังเปิดใช้งาน (ตามระบบเดิม)
   const doc = docs.find((d) => d.key === input.docKey && d.enabled);
   if (!doc) throw new PortalError('invalid_input', 'ไม่พบประเภทเอกสารนี้ หรือปิดรับเอกสารนี้แล้ว');
@@ -439,7 +439,8 @@ export async function uploadDocuments(
 
   const state = await buildState(applicant, deps);
   if (!view.allSatisfied && state.docs?.allSatisfied) {
-    await repo.markCompleted(applicant.id, docs.filter((d) => !d.coversAll).map((d) => d.key));
+    // ชุดเบื้องต้นไม่ล็อก snapshot — ไม่งั้นเปลี่ยนเป็น "ส่งทั้งหมด" ทีหลังจะยังเห็นแค่ชุดเบื้องต้น
+    await repo.markCompleted(applicant.id, applicant.docScope === 'initial' ? [] : docs.filter((d) => !d.coversAll).map((d) => d.key));
     await pushDocsComplete(applicant, state.docs.total, deps);
   }
   return state;

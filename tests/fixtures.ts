@@ -8,6 +8,7 @@ const doc = (key: string, label: string, sortOrder: number, subitems: Array<stri
   enabled: true,
   optional: false,
   coversAll: false,
+  initial: false,
   subitems: subitems.map((s) => (Array.isArray(s) ? { title: s[0], optional: s[1] } : { title: s, optional: false })),
   checks: [],
   ...extra,

@@ -5,7 +5,7 @@ import 'server-only';
  */
 import type { SupabaseClient } from '@supabase/supabase-js';
 import { requiredDocsFor, summarizeApplicantDocs } from '@/lib/docs/status';
-import type { Applicant, DocReview, DocType, FileSlotRef, ReviewStatus } from '@/lib/docs/types';
+import type { Applicant, ClosedStatus, DocReview, DocScope, DocType, FileSlotRef, ReviewStatus } from '@/lib/docs/types';
 import { serverEnv } from '@/lib/env';
 import { createLineClient } from '@/lib/line/client';
 import { DEFAULT_LOGO_URL } from '@/lib/line/flex';
@@ -14,10 +14,11 @@ import type { LineMessage } from '@/lib/line/types';
 import { createSupabaseRepo, DOCS_BUCKET } from '@/lib/repo/supabase';
 import { getSupabaseAdmin } from '@/lib/supabase/admin';
 import { adminDisplayName } from './auth';
-import { selectForApplicants } from './fetch-all';
+import { applicantIdsWithReview, selectForApplicants } from './fetch-all';
 import {
   applicantStage,
   buildApprovalMessage,
+  buildMoreDocsMessage,
   buildReviewMessages,
   completionChange,
   countPendingReview,
@@ -30,6 +31,8 @@ import type {
   ApplicantListFilter,
   ApplicantListItem,
   ApplicantListResult,
+  ApplicantListView,
+  ApplicantStage,
   FileView,
   ReviewView,
 } from './types';
@@ -37,8 +40,9 @@ import type {
 export class AdminInputError extends Error {}
 
 const PAGE_SIZE = 50;
+const DAY_MS = 86_400_000;
 const COLS =
-  'id, code, name, phone, approved, line_user_id, access_token, required_doc_keys, admin_feedback, onboard_notified_at, pdpa_version, pdpa_accepted_at, created_at, last_uploaded_at, completed_at, branch_label, notes, deadline, ta, intern, company, position, start_date';
+  'id, code, name, phone, approved, line_user_id, access_token, required_doc_keys, admin_feedback, onboard_notified_at, pdpa_version, pdpa_accepted_at, created_at, last_uploaded_at, completed_at, branch_label, notes, deadline, ta, intern, company, position, start_date, doc_scope, closed_status, closed_reason, closed_at, closed_by';
 
 interface Row {
   id: string;
@@ -64,6 +68,11 @@ interface Row {
   company: string | null;
   position: string | null;
   start_date: string | null;
+  doc_scope: DocScope;
+  closed_status: ClosedStatus | null;
+  closed_reason: string;
+  closed_at: string | null;
+  closed_by: string | null;
 }
 
 const toApplicant = (r: Row): Applicant => ({
@@ -75,6 +84,8 @@ const toApplicant = (r: Row): Applicant => ({
   lineUserId: r.line_user_id,
   accessToken: r.access_token,
   requiredDocKeys: r.required_doc_keys,
+  docScope: r.doc_scope ?? 'all',
+  closedStatus: r.closed_status ?? null,
   adminFeedback: r.admin_feedback ?? '',
   onboardNotified: !!r.onboard_notified_at,
   pdpaVersion: r.pdpa_version,
@@ -166,6 +177,8 @@ async function fullyApprovedIds(allDocs: DocType[]): Promise<string[]> {
       .select('id, required_doc_keys')
       .eq('approved', true)
       .is('onboard_notified_at', null)
+      .is('closed_status', null)
+      .eq('doc_scope', 'all')
       .not('completed_at', 'is', null)
       .limit(1000),
     'fully approved candidates',
@@ -194,46 +207,110 @@ async function fullyApprovedIds(allDocs: DocType[]): Promise<string[]> {
     .map((r) => r.id);
 }
 
-export async function listApplicants(opts: { q: string; filter: ApplicantListFilter; page: number }): Promise<ApplicantListResult> {
+export async function listApplicants(opts: {
+  q: string;
+  filter: ApplicantListFilter;
+  view?: ApplicantListView | null;
+  page: number;
+}): Promise<ApplicantListResult> {
   const page = Math.max(1, Math.floor(opts.page) || 1);
   // ตัดอักขระที่มีความหมายในไวยากรณ์ filter ของ PostgREST ออก
   const q = opts.q.replace(/[,()*%\\:]/g, ' ').trim().slice(0, 60);
-
-  // อนุมัติเอกสารครบ / แจ้งเริ่มงานแล้ว → ย้ายไปหน้าแจ้งเริ่มงาน ไม่ปนกับคนที่ยังต้องตรวจ
-  // (พิมพ์ค้นหายังเจอทุกคน เผื่อต้องเปิดดูเอกสารย้อนหลัง)
-  const hideDone = !q && opts.filter !== 'pending_approval';
+  const view = opts.view ?? null;
   const allDocs = await docTypes();
-  const [doneIds, onboarded] = hideDone
-    ? await Promise.all([
-        fullyApprovedIds(allDocs),
-        db().from('applicants').select('id', { count: 'exact', head: true }).not('onboard_notified_at', 'is', null),
-      ])
-    : [[], null];
-  if (onboarded?.error) throw new Error(`onboarded count: ${onboarded.error.message}`);
-  const movedToOnboarding = doneIds.length + (onboarded?.count ?? 0);
 
-  let query = db()
-    .from('applicants')
-    .select(COLS, { count: 'exact' })
-    .order('last_uploaded_at', { ascending: false, nullsFirst: false })
-    .order('created_at', { ascending: false })
-    .range((page - 1) * PAGE_SIZE, page * PAGE_SIZE - 1);
-
-  if (opts.filter === 'pending_approval') query = query.eq('approved', false);
-  if (opts.filter === 'approved') query = query.eq('approved', true);
-  if (hideDone) {
-    query = query.is('onboard_notified_at', null);
-    if (doneIds.length) query = query.not('id', 'in', `(${doneIds.join(',')})`);
-  }
-  if (q) {
+  /** ค้นหาชื่อ / รหัส / เบอร์ */
+  const withSearch = <T extends { or: (f: string) => T }>(query: T): T => {
+    if (!q) return query;
     const digits = q.replace(/\D/g, '');
     const parts = [`name.ilike.*${q}*`, `code.ilike.*${q}*`];
     if (digits.length >= 3) parts.push(`phone.ilike.*${digits}*`);
-    query = query.or(parts.join(','));
+    return query.or(parts.join(','));
+  };
+
+  let rows: Row[];
+  let total: number;
+  let movedToOnboarding = 0;
+
+  if (view === 'review' || view === 'rejected') {
+    // ผู้สมัครที่มีผลตรวจสถานะนี้ (นิยามเดียวกับตัวเลขในหน้าภาพรวม)
+    const flagged = [...(await applicantIdsWithReview(db(), view === 'review' ? 'pending_review' : 'rejected'))];
+    const candidates: Array<{ id: string; last_uploaded_at: string | null; created_at: string }> = [];
+    for (let i = 0; i < flagged.length; i += 80) {
+      const res = await withSearch(
+        db()
+          .from('applicants')
+          .select('id, last_uploaded_at, created_at')
+          .in('id', flagged.slice(i, i + 80))
+          .eq('approved', true)
+          .is('onboard_notified_at', null)
+          .is('closed_status', null),
+      );
+      candidates.push(...(ok(res, 'view candidates') as typeof candidates));
+    }
+    // รอตรวจ: รอนานสุดขึ้นก่อน (ตรวจตามคิว) / รอผู้สมัครแก้: ล่าสุดก่อน
+    const t = (c: (typeof candidates)[number]) => new Date(c.last_uploaded_at ?? c.created_at).getTime();
+    candidates.sort((a, b) => (view === 'review' ? t(a) - t(b) : t(b) - t(a)));
+    total = candidates.length;
+    const pageIds = candidates.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE).map((c) => c.id);
+    const res = pageIds.length ? await db().from('applicants').select(COLS).in('id', pageIds) : { data: [], error: null };
+    const byId = new Map((ok(res, 'view rows') as Row[]).map((r) => [r.id, r]));
+    rows = pageIds.map((id) => byId.get(id)).filter((r): r is Row => !!r);
+  } else {
+    // อนุมัติเอกสารครบ / แจ้งเริ่มงานแล้ว → ย้ายไปหน้าแจ้งเริ่มงาน ไม่ปนกับคนที่ยังต้องตรวจ
+    // (พิมพ์ค้นหายังเจอทุกคน เผื่อต้องเปิดดูเอกสารย้อนหลัง)
+    const hideDone = !q && !view && (opts.filter === 'all' || opts.filter === 'approved');
+    const [doneIds, onboarded] = hideDone
+      ? await Promise.all([
+          fullyApprovedIds(allDocs),
+          db()
+            .from('applicants')
+            .select('id', { count: 'exact', head: true })
+            .not('onboard_notified_at', 'is', null)
+            .is('closed_status', null),
+        ])
+      : [[], null];
+    if (onboarded?.error) throw new Error(`onboarded count: ${onboarded.error.message}`);
+    movedToOnboarding = doneIds.length + (onboarded?.count ?? 0);
+
+    let query = db()
+      .from('applicants')
+      .select(COLS, { count: 'exact' })
+      .order(view === 'new7d' ? 'created_at' : 'last_uploaded_at', { ascending: false, nullsFirst: false })
+      .order('created_at', { ascending: false })
+      .range((page - 1) * PAGE_SIZE, page * PAGE_SIZE - 1);
+
+    if (view) {
+      // มุมมองด่วนจากหน้าภาพรวม — ไม่รวมคนที่ปิดใบสมัครแล้ว
+      query = query.is('closed_status', null);
+      const threeDaysAgo = new Date(Date.now() - 3 * DAY_MS).toISOString();
+      if (view === 'no_profile') query = query.or('name.eq.,phone.is.null');
+      if (view === 'new7d') query = query.gte('created_at', new Date(Date.now() - 7 * DAY_MS).toISOString());
+      if (view === 'stale3d') {
+        query = query
+          .eq('approved', true)
+          .is('completed_at', null)
+          .is('onboard_notified_at', null)
+          .or(`last_uploaded_at.lt.${threeDaysAgo},and(last_uploaded_at.is.null,created_at.lt.${threeDaysAgo})`);
+      }
+    } else {
+      // รออนุมัติ = กรอกข้อมูลครบแล้ว รอ HR อนุมัติ (คนที่ยังไม่กรอกข้อมูลดูได้ที่ "ทั้งหมด")
+      if (opts.filter === 'pending_approval') query = query.eq('approved', false).neq('name', '').not('phone', 'is', null);
+      if (opts.filter === 'approved') query = query.eq('approved', true);
+      // Cancel/Turndown อยู่แท็บของตัวเอง — แท็บอื่นไม่แสดง (ยกเว้นค้นหาในแท็บ "ทั้งหมด" ให้เจอทุกคน)
+      if (opts.filter === 'closed') query = query.not('closed_status', 'is', null);
+      else if (!q || opts.filter !== 'all') query = query.is('closed_status', null);
+      if (hideDone) {
+        query = query.is('onboard_notified_at', null);
+        if (doneIds.length) query = query.not('id', 'in', `(${doneIds.join(',')})`);
+      }
+    }
+
+    const res = await withSearch(query);
+    rows = ok(res, 'list applicants') as Row[];
+    total = res.count ?? rows.length;
   }
 
-  const res = await query;
-  const rows = ok(res, 'list applicants') as Row[];
   const ids = rows.map((r) => r.id);
   const [files, reviews] = await Promise.all([
     selectForApplicants<{ applicant_id: string; doc_key: string; subitem_title: string }>(
@@ -248,7 +325,7 @@ export async function listApplicants(opts: { q: string; filter: ApplicantListFil
 
   const items: ApplicantListItem[] = rows.map((r) => {
     const a = toApplicant(r);
-    const docs = requiredDocsFor(a.requiredDocKeys, allDocs);
+    const docs = requiredDocsFor(a.requiredDocKeys, allDocs, a.docScope);
     const myFiles: FileSlotRef[] = files
       .filter((f) => f.applicant_id === r.id)
       .map((f) => ({ docKey: f.doc_key, subitemTitle: f.subitem_title }));
@@ -262,6 +339,8 @@ export async function listApplicants(opts: { q: string; filter: ApplicantListFil
       approved: r.approved,
       lineLinked: !!r.line_user_id,
       stage: applicantStage(a, summary, myReviews),
+      docScope: a.docScope,
+      closedReason: r.closed_reason ?? '',
       satisfied: summary?.satisfiedCount ?? 0,
       total: summary?.total ?? docs.filter((d) => !d.coversAll && !d.optional).length,
       pendingReview: countPendingReview(myReviews, docs),
@@ -269,7 +348,7 @@ export async function listApplicants(opts: { q: string; filter: ApplicantListFil
       lastUploadedAt: r.last_uploaded_at,
     };
   });
-  return { items, total: res.count ?? items.length, page, pageSize: PAGE_SIZE, movedToOnboarding };
+  return { items, total, page, pageSize: PAGE_SIZE, movedToOnboarding };
 }
 
 // ---------------------------------------------------------------------------
@@ -301,7 +380,7 @@ export async function getApplicantDetail(id: string): Promise<ApplicantDetail> {
   }>;
   const reviews = (ok(reviewsRes, 'detail reviews') as ReviewRow[]).map(toReview);
 
-  const required = requiredDocsFor(a.requiredDocKeys, allDocs);
+  const required = requiredDocsFor(a.requiredDocKeys, allDocs, a.docScope);
   const summary = summarizeApplicantDocs(required, files.map((f) => ({ docKey: f.doc_key, subitemTitle: f.subitem_title })), reviews);
   // แสดงเอกสารในชุดของคนนี้ + เอกสารอื่นที่มีไฟล์อยู่ (เช่น ถูกปิดไปแล้วภายหลัง)
   const shown = allDocs.filter((d) => required.some((r) => r.key === d.key) || files.some((f) => f.doc_key === d.key));
@@ -360,6 +439,10 @@ export async function getApplicantDetail(id: string): Promise<ApplicantDetail> {
     approved: row.approved,
     lineLinked: !!row.line_user_id,
     stage: applicantStage(a, a.approved ? summary : null, reviews),
+    docScope: a.docScope,
+    closed: row.closed_status
+      ? { status: row.closed_status, reason: row.closed_reason ?? '', at: row.closed_at, by: row.closed_by }
+      : null,
     feedback: row.admin_feedback ?? '',
     pdpaVersion: row.pdpa_version,
     pdpaAcceptedAt: row.pdpa_accepted_at,
@@ -386,6 +469,86 @@ export async function getApplicantDetail(id: string): Promise<ApplicantDetail> {
 // ---------------------------------------------------------------------------
 // คำสั่ง
 
+const isDocsDone = (stage: ApplicantStage) => stage === 'complete' || stage === 'initial_complete';
+
+const CLOSED_LABEL: Record<ClosedStatus, string> = { cancel: 'Cancel (ยกเลิก)', turndown: 'Turndown (ผู้สมัครปฏิเสธ)' };
+
+/**
+ * ปิดใบสมัคร (Cancel / Turndown) หรือคืนสถานะ (status = null)
+ * ปิดแล้ว: ย้ายไปแท็บ Cancel/Turndown, ไม่ถูกเตือนเอกสาร, ไม่ขึ้นหน้าแจ้งเริ่มงาน — ข้อมูลและไฟล์ยังอยู่ครบ
+ */
+export async function setClosedStatus(admin: AdminProfile, id: string, rawStatus: unknown, rawReason: unknown) {
+  const row = await loadRow(id);
+  let status: ClosedStatus | null;
+  if (rawStatus === 'cancel' || rawStatus === 'turndown') status = rawStatus;
+  else if (rawStatus === null || rawStatus === undefined || rawStatus === '') status = null;
+  else throw new AdminInputError('สถานะไม่ถูกต้อง');
+  const reason = String(rawReason ?? '').trim();
+  if (reason.length > 500) throw new AdminInputError('เหตุผลยาวเกินไป (ไม่เกิน 500 ตัวอักษร)');
+  if (!status && !row.closed_status) throw new AdminInputError('ใบสมัครนี้ยังไม่ได้ถูกปิด');
+
+  const patch = status
+    ? { closed_status: status, closed_reason: reason, closed_at: new Date().toISOString(), closed_by: adminDisplayName(admin) }
+    : { closed_status: null, closed_reason: '', closed_at: null, closed_by: null };
+  ok(await db().from('applicants').update(patch).eq('id', id), 'set closed status');
+  await audit(
+    admin,
+    status ? `ปิดใบสมัคร: ${CLOSED_LABEL[status]}` : 'คืนสถานะใบสมัคร',
+    row,
+    status ? reason || '-' : `เดิม: ${row.closed_status ? CLOSED_LABEL[row.closed_status] : '-'}`,
+    'closed_status',
+  );
+  return getApplicantDetail(id);
+}
+
+/**
+ * เปลี่ยนชุดเอกสารที่ต้องส่ง: initial = เฉพาะเอกสารเบื้องต้น / all = ทั้งหมด
+ * ล้าง snapshot แล้วคำนวณ "ส่งครบ" ใหม่ตามชุดใหม่ — เบื้องต้น → ทั้งหมด จะเห็นเอกสารที่เหลือทันที
+ */
+export async function setDocScope(admin: AdminProfile, id: string, rawScope: unknown, notify: boolean) {
+  const row = await loadRow(id);
+  if (rawScope !== 'initial' && rawScope !== 'all') throw new AdminInputError('ชุดเอกสารไม่ถูกต้อง');
+  const scope: DocScope = rawScope;
+  if (row.doc_scope === scope) return getApplicantDetail(id);
+  if (row.onboard_notified_at) throw new AdminInputError('แจ้งเริ่มงานแล้ว เปลี่ยนชุดเอกสารไม่ได้');
+
+  const allDocs = await docTypes();
+  const [filesRes, reviewsRes] = await Promise.all([
+    db().from('applicant_files').select('doc_key, subitem_title').eq('applicant_id', id).eq('is_current', true),
+    db().from('doc_reviews').select('applicant_id, doc_key, subitem_title, status, reason, reviewed_by, updated_at').eq('applicant_id', id),
+  ]);
+  const files = (ok(filesRes, 'files') as Array<{ doc_key: string; subitem_title: string }>).map((f) => ({
+    docKey: f.doc_key,
+    subitemTitle: f.subitem_title,
+  }));
+  const reviews = (ok(reviewsRes, 'reviews') as ReviewRow[]).map(toReview);
+  // ชุดเอกสารคิดใหม่จากที่เปิดใช้งานปัจจุบัน (ไม่ใช้ snapshot เดิม)
+  const required = requiredDocsFor(null, allDocs, scope);
+  const complete = summarizeApplicantDocs(required, files, reviews).allSatisfied;
+  const change = completionChange(complete, null, null, required, scope);
+
+  ok(
+    await db()
+      .from('applicants')
+      .update({
+        doc_scope: scope,
+        completed_at: complete ? (row.completed_at ?? change.completedAt ?? null) : null,
+        required_doc_keys: change.requiredDocKeys ?? null,
+      })
+      .eq('id', id),
+    'set doc scope',
+  );
+  await audit(admin, 'เปลี่ยนชุดเอกสาร', row, scope === 'initial' ? 'ส่งทั้งหมด → ส่งเบื้องต้น' : 'ส่งเบื้องต้น → ส่งทั้งหมด', 'doc_scope');
+
+  // เบื้องต้น → ทั้งหมด: แจ้งผู้สมัครให้ส่งเอกสารที่เหลือ
+  if (scope === 'all' && notify && row.approved && !complete && !row.closed_status) {
+    const { handler, logoUrl } = lineConfig();
+    const msg = buildMoreDocsMessage(row.name, buildAppLink(handler), logoUrl);
+    await pushAndLog(row, 'more_docs', msg.altText, [{ type: 'flex', altText: msg.altText, contents: msg.bubble }], adminDisplayName(admin));
+  }
+  return getApplicantDetail(id);
+}
+
 export async function setApproval(admin: AdminProfile, id: string, approved: boolean, notify: boolean) {
   const row = await loadRow(id);
   ok(await db().from('applicants').update({ approved }).eq('id', id), 'set approval');
@@ -410,7 +573,7 @@ export async function reviewDocuments(admin: AdminProfile, id: string, rawItems:
   const items = validateReviewItems(rawItems, allDocs);
   const now = new Date().toISOString();
   const by = adminDisplayName(admin);
-  const wasComplete = (await getApplicantDetail(id)).stage === 'complete';
+  const wasComplete = isDocsDone((await getApplicantDetail(id)).stage);
 
   ok(
     await db()
@@ -446,11 +609,11 @@ export async function reviewDocuments(admin: AdminProfile, id: string, rawItems:
     subitemTitle: f.subitem_title,
   }));
   const reviews = (ok(reviewsRes, 'reviews') as ReviewRow[]).map(toReview);
-  const required = requiredDocsFor(row.required_doc_keys, allDocs);
+  const required = requiredDocsFor(row.required_doc_keys, allDocs, row.doc_scope);
   const summary = summarizeApplicantDocs(required, files, reviews);
   // "ส่งครบ" ตามความหมายของระบบเดิม (ดู completionChange)
   const complete = summary.allSatisfied || !!row.onboard_notified_at;
-  const change = completionChange(complete, row.completed_at, row.required_doc_keys, required);
+  const change = completionChange(complete, row.completed_at, row.required_doc_keys, required, row.doc_scope);
 
   const patch: Record<string, unknown> = {
     admin_reviewed_at: now,
@@ -476,7 +639,8 @@ export async function reviewDocuments(admin: AdminProfile, id: string, rawItems:
       applicantName: row.name,
       items,
       allDocs,
-      becameComplete: !wasComplete && detail.stage === 'complete',
+      becameComplete: !wasComplete && isDocsDone(detail.stage),
+      initialOnly: detail.docScope === 'initial',
       linkFor: (doc) => buildAppLink(handler, { doc }),
       logoUrl,
     });

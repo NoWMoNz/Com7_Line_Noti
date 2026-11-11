@@ -25,9 +25,15 @@ export const STAGE: Record<ApplicantStage, { label: string; tone: 'brand' | 'inf
   review: { label: 'รอตรวจ', tone: 'info' },
   rejected: { label: 'รอผู้สมัครแก้', tone: 'danger' },
   missing: { label: 'รอส่งเอกสาร', tone: 'muted' },
+  initial_complete: { label: 'เอกสารเบื้องต้นครบ', tone: 'brand' },
   complete: { label: 'เอกสารครบ', tone: 'brand' },
   onboarded: { label: 'แจ้งเริ่มงานแล้ว', tone: 'brand' },
+  cancel: { label: 'Cancel', tone: 'muted' },
+  turndown: { label: 'Turndown', tone: 'muted' },
 };
+
+/** ชื่อชุดเอกสาร */
+export const DOC_SCOPE_LABEL = { initial: 'ส่งเบื้องต้น', all: 'ส่งทั้งหมด' } as const;
 
 const dateTime = new Intl.DateTimeFormat('th-TH', { dateStyle: 'medium', timeStyle: 'short', timeZone: 'Asia/Bangkok' });
 const dateOnly = new Intl.DateTimeFormat('th-TH', { day: 'numeric', month: 'short', timeZone: 'Asia/Bangkok' });

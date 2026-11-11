@@ -1,5 +1,5 @@
 import type { SupabaseClient } from '@supabase/supabase-js';
-import type { Applicant, DocReview, DocType, FileSlotRef, ReviewStatus } from '@/lib/docs/types';
+import type { Applicant, ClosedStatus, DocReview, DocScope, DocType, FileSlotRef, ReviewStatus } from '@/lib/docs/types';
 import type { ActivityLogInput, NotificationLogInput, Repo, SaveUploadInput } from './types';
 
 export const DOCS_BUCKET = 'applicant-docs';
@@ -7,7 +7,7 @@ const DOC_TYPES_TTL_MS = 60_000;
 
 // ต้องเป็น string literal เดียว (ห้ามต่อด้วย +) — supabase-js อ่าน type ของผลลัพธ์จากข้อความนี้
 const APPLICANT_COLUMNS =
-  'id, code, name, phone, approved, line_user_id, access_token, required_doc_keys, admin_feedback, onboard_notified_at, pdpa_version, pdpa_accepted_at';
+  'id, code, name, phone, approved, line_user_id, access_token, required_doc_keys, admin_feedback, onboard_notified_at, pdpa_version, pdpa_accepted_at, doc_scope, closed_status';
 
 interface ApplicantRow {
   id: string;
@@ -22,6 +22,8 @@ interface ApplicantRow {
   onboard_notified_at: string | null;
   pdpa_version: string | null;
   pdpa_accepted_at: string | null;
+  doc_scope: DocScope;
+  closed_status: ClosedStatus | null;
 }
 
 function toApplicant(r: ApplicantRow): Applicant {
@@ -34,6 +36,8 @@ function toApplicant(r: ApplicantRow): Applicant {
     lineUserId: r.line_user_id,
     accessToken: r.access_token,
     requiredDocKeys: r.required_doc_keys,
+    docScope: r.doc_scope ?? 'all',
+    closedStatus: r.closed_status ?? null,
     adminFeedback: r.admin_feedback ?? '',
     onboardNotified: !!r.onboard_notified_at,
     pdpaVersion: r.pdpa_version,
@@ -137,7 +141,7 @@ export function createSupabaseRepo(db: SupabaseClient): Repo {
       if (docTypesCache && Date.now() - docTypesCache.at < DOC_TYPES_TTL_MS) return docTypesCache.value;
       const res = await db
         .from('doc_types')
-        .select('key, label, description, sort_order, enabled, optional, covers_all, doc_subitems(title, sort_order, optional, kind)')
+        .select('key, label, description, sort_order, enabled, optional, covers_all, initial, doc_subitems(title, sort_order, optional, kind)')
         .order('sort_order');
       const rows = check(res, 'getDocTypes') as Array<{
         key: string;
@@ -147,6 +151,7 @@ export function createSupabaseRepo(db: SupabaseClient): Repo {
         enabled: boolean;
         optional: boolean;
         covers_all: boolean;
+        initial: boolean;
         doc_subitems: Array<{ title: string; sort_order: number; optional: boolean; kind: 'file' | 'check' }>;
       }>;
       const value: DocType[] = rows.map((r) => ({
@@ -157,6 +162,7 @@ export function createSupabaseRepo(db: SupabaseClient): Repo {
         enabled: r.enabled,
         optional: r.optional,
         coversAll: r.covers_all,
+        initial: r.initial ?? false,
         subitems: [...(r.doc_subitems ?? [])]
           .filter((s) => s.kind !== 'check')
           .sort((a, b) => a.sort_order - b.sort_order)

@@ -14,6 +14,8 @@ export function makeApplicant(n: number, extra: Partial<Applicant> = {}): Applic
     lineUserId: null,
     accessToken: `tok${n}`,
     requiredDocKeys: null,
+    docScope: 'all',
+    closedStatus: null,
     adminFeedback: '',
     onboardNotified: false,
     pdpaVersion: null,

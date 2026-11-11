@@ -2,7 +2,7 @@
  * ข้อมูลที่ API แอดมินส่งให้หน้าเว็บ — ใช้ร่วมกันทั้ง server และ browser (ห้าม import โค้ดฝั่ง server)
  */
 import type { DocState, SubitemState } from '@/lib/docs/status';
-import type { ReviewStatus } from '@/lib/docs/types';
+import type { ClosedStatus, DocScope, ReviewStatus } from '@/lib/docs/types';
 
 export type AdminRole = 'Developer' | 'SuperAdmin' | 'Admin2' | 'Admin';
 
@@ -20,10 +20,21 @@ export type ApplicantStage =
   | 'rejected' // มีเอกสารต้องแก้ (รอผู้สมัคร)
   | 'review' // มีไฟล์รอ HR ตรวจ
   | 'missing' // รอผู้สมัครส่งเอกสาร
+  | 'initial_complete' // อนุมัติเอกสารเบื้องต้นครบ (รอ HR ตัดสินใจให้ส่งทั้งหมด)
   | 'complete' // อนุมัติเอกสารครบ
-  | 'onboarded'; // แจ้งเริ่มงานแล้ว
+  | 'onboarded' // แจ้งเริ่มงานแล้ว
+  | ClosedStatus; // ปิดใบสมัครแล้ว: cancel / turndown
 
-export type ApplicantListFilter = 'all' | 'pending_approval' | 'approved';
+/** closed = แท็บ Cancel/Turndown (แท็บอื่นไม่แสดงคนที่ปิดใบสมัครแล้ว) */
+export type ApplicantListFilter = 'all' | 'pending_approval' | 'approved' | 'closed';
+
+/**
+ * มุมมองด่วน (ตรงกับตัวเลขในหน้าภาพรวม) — ใช้แทนแท็บ ไม่รวมคนที่ปิดใบสมัครแล้ว
+ *  no_profile = ยังไม่กรอกข้อมูล · review = มีไฟล์รอตรวจ · rejected = รอผู้สมัครแก้
+ *  stale3d = ไม่ขยับเกิน 3 วัน · new7d = ลงทะเบียนใน 7 วัน
+ */
+export type ApplicantListView = 'no_profile' | 'review' | 'rejected' | 'stale3d' | 'new7d';
+export const APPLICANT_LIST_VIEWS: ApplicantListView[] = ['review', 'rejected', 'stale3d', 'no_profile', 'new7d'];
 
 export interface ApplicantListItem {
   id: string;
@@ -33,6 +44,9 @@ export interface ApplicantListItem {
   approved: boolean;
   lineLinked: boolean;
   stage: ApplicantStage;
+  docScope: DocScope;
+  /** เหตุผลที่ปิดใบสมัคร (เฉพาะ cancel / turndown) */
+  closedReason: string;
   satisfied: number;
   total: number;
   /** จำนวนช่องที่รอ HR ตรวจ */
@@ -99,6 +113,9 @@ export interface ApplicantDetail {
   approved: boolean;
   lineLinked: boolean;
   stage: ApplicantStage;
+  docScope: DocScope;
+  /** ปิดใบสมัครแล้ว — null = ยังดำเนินการอยู่ */
+  closed: { status: ClosedStatus; reason: string; at: string | null; by: string | null } | null;
   feedback: string;
   pdpaVersion: string | null;
   pdpaAcceptedAt: string | null;

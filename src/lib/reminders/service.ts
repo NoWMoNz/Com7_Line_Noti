@@ -2,7 +2,7 @@ import 'server-only';
 /** ส่งแจ้งเตือนเอกสารค้าง — กดเองจากหน้าแอดมิน และงานอัตโนมัติรายวัน (Vercel Cron) */
 import { selectForApplicants } from '@/lib/admin/fetch-all';
 import { requiredDocsFor, summarizeApplicantDocs, type ApplicantDocSummary } from '@/lib/docs/status';
-import type { ReviewStatus } from '@/lib/docs/types';
+import type { DocScope, ReviewStatus } from '@/lib/docs/types';
 import { serverEnv } from '@/lib/env';
 import { createLineClient } from '@/lib/line/client';
 import { DEFAULT_LOGO_URL } from '@/lib/line/flex';
@@ -37,6 +37,7 @@ interface Candidate {
   admin_reviewed_at: string | null;
   followup_sent_at: string | null;
   required_doc_keys: string[] | null;
+  doc_scope: DocScope;
   summary: ApplicantDocSummary;
 }
 
@@ -46,10 +47,11 @@ async function loadCandidates(onlyIds?: string[]): Promise<Candidate[]> {
   for (let from = 0; ; from += 1000) {
     let q = db()
       .from('applicants')
-      .select('id, code, name, phone, line_user_id, access_token, admin_feedback, deadline, last_notified_at, last_uploaded_at, admin_reviewed_at, followup_sent_at, required_doc_keys')
+      .select('id, code, name, phone, line_user_id, access_token, admin_feedback, deadline, last_notified_at, last_uploaded_at, admin_reviewed_at, followup_sent_at, required_doc_keys, doc_scope')
       .eq('approved', true)
       .not('line_user_id', 'is', null)
       .is('onboard_notified_at', null)
+      .is('closed_status', null)
       .order('id')
       .range(from, from + 999);
     if (onlyIds) q = q.in('id', onlyIds);
@@ -69,7 +71,7 @@ async function loadCandidates(onlyIds?: string[]): Promise<Candidate[]> {
     .map((r) => ({
       ...r,
       summary: summarizeApplicantDocs(
-        requiredDocsFor(r.required_doc_keys, allDocs),
+        requiredDocsFor(r.required_doc_keys, allDocs, r.doc_scope),
         files.filter((f) => f.applicant_id === r.id).map((f) => ({ docKey: f.doc_key, subitemTitle: f.subitem_title })),
         reviews
           .filter((x) => x.applicant_id === r.id)

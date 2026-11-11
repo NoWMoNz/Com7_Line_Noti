@@ -117,6 +117,18 @@ describe('schema', () => {
     expect(rv.rows).toEqual([{ subitem_title: '', status: 'rejected', reason: 'วันหมดอายุบัตร: บัตรหมดอายุ' }]);
   });
 
+  it('ปิดใบสมัคร: ค่าได้แค่ cancel / turndown · ชุดเอกสารเริ่มต้น = all', async () => {
+    const a = await one<{ id: string; doc_scope: string; closed_status: string | null }>(
+      `insert into applicants (name) values ('ปิด') returning id, doc_scope, closed_status`,
+    );
+    expect(a.doc_scope).toBe('all');
+    expect(a.closed_status).toBeNull();
+    await db.query(`update applicants set closed_status = 'turndown' where id = $1`, [a.id]);
+    await expect(db.query(`update applicants set closed_status = 'other' where id = $1`, [a.id])).rejects.toThrow();
+    await expect(db.query(`update applicants set doc_scope = 'some' where id = $1`, [a.id])).rejects.toThrow();
+    expect(await one<{ n: number }>('select count(*)::int n from doc_types where initial')).toEqual({ n: 0 });
+  });
+
   it('เปิด RLS ครบทุกตาราง', async () => {
     const rows = (await db.query<{ relname: string }>(
       `select relname from pg_class where relnamespace = 'public'::regnamespace and relkind = 'r' and not relrowsecurity`,

@@ -4,6 +4,7 @@ import 'server-only';
  * นับจากคอลัมน์และผลตรวจโดยตรง (ไม่คำนวณสถานะเอกสารทีละคน) เพื่อให้เร็วแม้มีผู้สมัครหลายพันคน
  */
 import { serverEnv } from '@/lib/env';
+import { applicantIdsWithReview } from '@/lib/admin/fetch-all';
 import { getSupabaseAdmin } from '@/lib/supabase/admin';
 
 const db = () => getSupabaseAdmin();
@@ -12,30 +13,12 @@ const DAY = 86_400_000;
 const countQuery = () => db().from('applicants').select('id', { count: 'exact', head: true });
 type CountQuery = ReturnType<typeof countQuery>;
 
-/** จำนวนผู้สมัครตามเงื่อนไข (ไม่ดึงแถวมา) */
-async function count(build: (q: CountQuery) => CountQuery) {
-  const res = await build(countQuery());
+/** จำนวนผู้สมัครตามเงื่อนไข (ไม่ดึงแถวมา) — ไม่นับคนที่ปิดใบสมัครแล้ว (Cancel/Turndown) ยกเว้นระบุ includeClosed */
+async function count(build: (q: CountQuery) => CountQuery, includeClosed = false) {
+  const base = countQuery();
+  const res = await build(includeClosed ? base : base.is('closed_status', null));
   if (res.error) throw new Error(res.error.message);
   return res.count ?? 0;
-}
-
-/** ผู้สมัคร (ไม่ซ้ำ) ที่มีผลตรวจสถานะนี้ — อ่านทีละ 1,000 แถว */
-async function applicantsWithReview(status: 'pending_review' | 'rejected'): Promise<Set<string>> {
-  const ids = new Set<string>();
-  for (let from = 0; ; from += 1000) {
-    const res = await db()
-      .from('doc_reviews')
-      .select('applicant_id')
-      .eq('status', status)
-      .order('applicant_id')
-      .order('doc_key')
-      .order('subitem_title')
-      .range(from, from + 999);
-    if (res.error) throw new Error(res.error.message);
-    res.data.forEach((r) => ids.add((r as { applicant_id: string }).applicant_id));
-    if (res.data.length < 1000) break;
-  }
-  return ids;
 }
 
 export interface Overview {
@@ -50,6 +33,8 @@ export interface Overview {
   onboarded: number;
   stale3d: number;
   newLast7d: number;
+  /** ปิดใบสมัครแล้ว (Cancel / Turndown) */
+  closed: number;
   recentNotifications: NotificationRow[];
 }
 
@@ -69,7 +54,7 @@ export async function getOverview(): Promise<Overview> {
   const threeDaysAgo = new Date(now - 3 * DAY).toISOString();
   const weekAgo = new Date(now - 7 * DAY).toISOString();
 
-  const [total, noProfile, pendingApproval, submittedAll, onboarded, stale3d, newLast7d, pending, rejected, notifications] = await Promise.all([
+  const [total, noProfile, pendingApproval, submittedAll, onboarded, stale3d, newLast7d, closed, pending, rejected, notifications] = await Promise.all([
     count((q) => q),
     count((q) => q.or('name.eq.,phone.is.null')),
     count((q) => q.eq('approved', false).neq('name', '').not('phone', 'is', null)),
@@ -84,25 +69,35 @@ export async function getOverview(): Promise<Overview> {
         .or(`last_uploaded_at.lt.${threeDaysAgo},and(last_uploaded_at.is.null,created_at.lt.${threeDaysAgo})`),
     ),
     count((q) => q.gte('created_at', weekAgo)),
-    applicantsWithReview('pending_review'),
-    applicantsWithReview('rejected'),
+    count((q) => q.not('closed_status', 'is', null), true),
+    applicantIdsWithReview(db(), 'pending_review'),
+    applicantIdsWithReview(db(), 'rejected'),
     listNotifications({ page: 1, pageSize: 8 }),
   ]);
 
-  // อายุของงานรอตรวจ: ดูเวลาส่งล่าสุดของผู้สมัครที่ยังมีไฟล์รอตรวจ (เฉพาะที่อนุมัติแล้วและยังไม่แจ้งเริ่มงาน)
+  // อายุของงานรอตรวจ: ดูเวลาส่งล่าสุดของผู้สมัครที่ยังมีไฟล์รอตรวจ
+  // นับเฉพาะคนที่อนุมัติแล้ว ยังไม่แจ้งเริ่มงาน และยังไม่ปิดใบสมัคร (ใช้กับ "รอผู้สมัครแก้" ด้วย)
   const aging = { under1d: 0, d1to3: 0, over3d: 0 };
-  const pendingIds = [...pending];
-  for (let i = 0; i < pendingIds.length; i += 80) {
+  const allIds = [...new Set([...pending, ...rejected])];
+  for (let i = 0; i < allIds.length; i += 80) {
     const res = await db()
       .from('applicants')
-      .select('id, last_uploaded_at, approved, onboard_notified_at')
-      .in('id', pendingIds.slice(i, i + 80));
+      .select('id, last_uploaded_at, approved, onboard_notified_at, closed_status')
+      .in('id', allIds.slice(i, i + 80));
     if (res.error) throw new Error(res.error.message);
-    for (const a of res.data as Array<{ id: string; last_uploaded_at: string | null; approved: boolean; onboard_notified_at: string | null }>) {
-      if (!a.approved || a.onboard_notified_at) {
+    for (const a of res.data as Array<{
+      id: string;
+      last_uploaded_at: string | null;
+      approved: boolean;
+      onboard_notified_at: string | null;
+      closed_status: string | null;
+    }>) {
+      if (!a.approved || a.onboard_notified_at || a.closed_status) {
         pending.delete(a.id);
+        rejected.delete(a.id);
         continue;
       }
+      if (!pending.has(a.id)) continue;
       const age = now - new Date(a.last_uploaded_at ?? 0).getTime();
       if (age < DAY) aging.under1d++;
       else if (age < 3 * DAY) aging.d1to3++;
@@ -121,6 +116,7 @@ export async function getOverview(): Promise<Overview> {
     onboarded,
     stale3d,
     newLast7d,
+    closed,
     recentNotifications: notifications.items,
   };
 }

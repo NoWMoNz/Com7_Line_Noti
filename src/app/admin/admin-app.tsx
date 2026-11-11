@@ -1,11 +1,13 @@
 'use client';
 
 import { useCallback, useEffect, useRef, useState } from 'react';
-import type {
-  ApplicantDetail,
-  ApplicantListFilter,
-  ApplicantListResult,
-  ReviewItemInput,
+import {
+  APPLICANT_LIST_VIEWS,
+  type ApplicantDetail,
+  type ApplicantListFilter,
+  type ApplicantListResult,
+  type ApplicantListView,
+  type ReviewItemInput,
 } from '@/lib/admin/types';
 import { Icon, Spinner } from '@/components/ui';
 import { canAccess } from '@/lib/admin/roles';
@@ -19,6 +21,23 @@ import { ApplicantList } from './applicant-list';
 function readSelected(): string | null {
   return new URLSearchParams(window.location.search).get('id');
 }
+/** ?filter= / ?view= — ลิงก์จากหน้าภาพรวม และรีเฟรชแล้วยังอยู่แท็บเดิม */
+function readFilter(): ApplicantListFilter {
+  const f = new URLSearchParams(window.location.search).get('filter');
+  return f === 'pending_approval' || f === 'approved' || f === 'closed' ? f : 'all';
+}
+function readView(): ApplicantListView | null {
+  const v = new URLSearchParams(window.location.search).get('view');
+  return APPLICANT_LIST_VIEWS.find((x) => x === v) ?? null;
+}
+function writeListParams(filter: ApplicantListFilter, view: ApplicantListView | null) {
+  const url = new URL(window.location.href);
+  if (filter !== 'all' && !view) url.searchParams.set('filter', filter);
+  else url.searchParams.delete('filter');
+  if (view) url.searchParams.set('view', view);
+  else url.searchParams.delete('view');
+  window.history.replaceState(null, '', url);
+}
 function writeSelected(id: string | null) {
   const url = new URL(window.location.href);
   if (id) url.searchParams.set('id', id);
@@ -30,11 +49,9 @@ export function AdminApp() {
   const me = useAdmin();
   const canRemind = canAccess(me.role, 'reminders');
   const [q, setQ] = useState('');
-  // ?filter= จากลิงก์ในหน้าภาพรวม
-  const [filter, setFilter] = useState<ApplicantListFilter>(() => {
-    const f = new URLSearchParams(window.location.search).get('filter');
-    return f === 'pending_approval' || f === 'approved' ? f : 'all';
-  });
+  // ?filter= / ?view= จากลิงก์ในหน้าภาพรวม
+  const [filter, setFilter] = useState<ApplicantListFilter>(readFilter);
+  const [view, setView] = useState<ApplicantListView | null>(readView);
   const [page, setPage] = useState(1);
   const [list, setList] = useState<ApplicantListResult | null>(null);
   const [listLoading, setListLoading] = useState(true);
@@ -52,10 +69,11 @@ export function AdminApp() {
   }, []);
 
   // ---------- รายชื่อ (รอพิมพ์เสร็จ 300ms ก่อนค้นหา) ----------
-  const loadList = useCallback(async (opts: { q: string; filter: ApplicantListFilter; page: number }) => {
+  const loadList = useCallback(async (opts: { q: string; filter: ApplicantListFilter; view: ApplicantListView | null; page: number }) => {
     const seq = ++listSeq.current;
     setListLoading(true);
     const params = new URLSearchParams({ q: opts.q, filter: opts.filter, page: String(opts.page) });
+    if (opts.view) params.set('view', opts.view);
     const r = await adminFetch<ApplicantListResult>(`applicants?${params}`);
     if (seq !== listSeq.current) return; // มีคำค้นใหม่กว่าแล้ว
     setListLoading(false);
@@ -66,9 +84,9 @@ export function AdminApp() {
   }, []);
 
   useEffect(() => {
-    const t = setTimeout(() => loadList({ q, filter, page }), q ? 300 : 0);
+    const t = setTimeout(() => loadList({ q, filter, view, page }), q ? 300 : 0);
     return () => clearTimeout(t);
-  }, [q, filter, page, loadList]);
+  }, [q, filter, view, page, loadList]);
 
   // ---------- รายละเอียด ----------
   useEffect(() => {
@@ -99,15 +117,17 @@ export function AdminApp() {
       const r = await adminFetch<ApplicantDetail>(`applicants/${selectedId}/${path}`, { method: 'POST', body });
       if (!r.ok) return r.error;
       setLoaded({ id: selectedId, detail: r.data, error: null });
-      loadList({ q, filter, page });
+      loadList({ q, filter, view, page });
       return null;
     },
-    [selectedId, q, filter, page, loadList],
+    [selectedId, q, filter, view, page, loadList],
   );
 
   const actions: DetailActions = {
     review: (items: ReviewItemInput[], notify) => mutate('reviews', { items, notify }),
-    approve: (approved, notify) => mutate('approval', { approved, notify }),
+    approve: (approved, notify, docScope) => mutate('approval', { approved, notify, docScope }),
+    setDocScope: (scope, notify) => mutate('doc-scope', { scope, notify }),
+    setClosed: (status, reason) => mutate('closed', { status, reason }),
     feedback: (text, sendLine) => mutate('feedback', { text, sendLine }),
     unlinkLine: () => mutate('unlink-line', {}),
     saveInfo: (input) => mutate('info', input),
@@ -123,7 +143,7 @@ export function AdminApp() {
       const r = await adminFetch<{ id: string }>(`applicants/${selectedId}/delete`, { method: 'POST', body: { confirmCode } });
       if (!r.ok) return r.error;
       select(null);
-      loadList({ q, filter, page });
+      loadList({ q, filter, view, page });
       return null;
     },
   };
@@ -135,6 +155,7 @@ export function AdminApp() {
           <ApplicantList
             q={q}
             filter={filter}
+            view={view}
             result={list}
             loading={listLoading}
             error={listError}
@@ -145,7 +166,15 @@ export function AdminApp() {
             }}
             onFilter={(f) => {
               setFilter(f);
+              setView(null);
               setPage(1);
+              writeListParams(f, null);
+            }}
+            onView={(v) => {
+              setView(v);
+              setFilter('all');
+              setPage(1);
+              writeListParams('all', v);
             }}
             onPage={setPage}
             onSelect={select}
@@ -194,7 +223,7 @@ export function AdminApp() {
                   if (!r.ok) return r.error;
                   setLoaded({ id: r.data.id, detail: r.data, error: null });
                   select(r.data.id);
-                  loadList({ q, filter, page });
+                  loadList({ q, filter, view, page });
                   return null;
                 }}
               />

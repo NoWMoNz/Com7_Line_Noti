@@ -25,7 +25,8 @@ export function OnboardingApp() {
   const [data, setData] = useState<OnboardingData | null>(null);
   const [branches, setBranches] = useState<BranchOption[]>([]);
   const [error, setError] = useState<string | null>(null);
-  const [tab, setTab] = useState<Tab>('pending');
+  // ?tab=sent จากหน้าภาพรวม (แจ้งเริ่มงานแล้ว)
+  const [tab, setTab] = useState<Tab>(() => (new URLSearchParams(window.location.search).get('tab') === 'sent' ? 'sent' : 'pending'));
   const [q, setQ] = useState('');
   const [openId, setOpenId] = useState<string | null>(null);
   const [bulk, setBulk] = useState<{ busy: boolean; result: string | null }>({ busy: false, result: null });

@@ -37,3 +37,22 @@ export async function selectForApplicants<T>(
   );
   return results.flat();
 }
+
+/** ผู้สมัคร (ไม่ซ้ำ) ที่มีผลตรวจสถานะนี้อย่างน้อย 1 ช่อง — อ่านทีละ 1,000 แถว */
+export async function applicantIdsWithReview(db: SupabaseClient, status: 'pending_review' | 'rejected'): Promise<Set<string>> {
+  const ids = new Set<string>();
+  for (let from = 0; ; from += PAGE) {
+    const res = await db
+      .from('doc_reviews')
+      .select('applicant_id')
+      .eq('status', status)
+      .order('applicant_id')
+      .order('doc_key')
+      .order('subitem_title')
+      .range(from, from + PAGE - 1);
+    if (res.error) throw new Error(`doc_reviews: ${res.error.message}`);
+    res.data.forEach((r) => ids.add((r as { applicant_id: string }).applicant_id));
+    if (res.data.length < PAGE) break;
+  }
+  return ids;
+}
