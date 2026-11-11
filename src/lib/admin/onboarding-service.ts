@@ -125,7 +125,7 @@ export async function saveTemplates(admin: AdminProfile, raw: unknown): Promise<
 
 /**
  * ผู้สมัครที่อนุมัติแล้ว + เอกสารอนุมัติครบทุกรายการ หรือเคยแจ้งเริ่มงานแล้ว (คงแสดงเสมอ)
- * คัดก่อนด้วย completed_at (ส่งครบ) แล้วค่อยตรวจ "อนุมัติครบ" ด้วยกฎกลาง
+ * ตัดสินด้วยกฎกลางอย่างเดียว (ไม่คัดด้วย completed_at — ข้อมูลเดิมบางคนอนุมัติครบแต่ไม่มีวันที่ส่งครบ)
  */
 export async function listOnboarding(): Promise<OnboardingData> {
   const rows = ok(
@@ -134,7 +134,6 @@ export async function listOnboarding(): Promise<OnboardingData> {
       .select(COLS)
       .eq('approved', true)
       .is('closed_status', null)
-      .or('completed_at.not.is.null,onboard_notified_at.not.is.null')
       .order('start_date', { ascending: true, nullsFirst: false })
       .limit(1000),
     'onboarding list',

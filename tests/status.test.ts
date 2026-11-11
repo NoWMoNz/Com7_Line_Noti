@@ -51,6 +51,20 @@ describe('summarizeApplicantDocs', () => {
     expect(rejected.allSatisfied).toBe(false);
   });
 
+  it('อนุมัติไฟล์รวม → ทุกเอกสารอนุมัติ ยกเว้นที่ถูกตีกลับรายชิ้น', () => {
+    const files = [file('doc0_all_in_one')];
+    const approved = summarizeApplicantDocs(DOCS, files, [review('doc0_all_in_one', 'approved')]);
+    expect(approved.docs.every((d) => d.state === 'approved')).toBe(true);
+    expect(approved.complete).toBe(true);
+
+    const oneRejected = summarizeApplicantDocs(DOCS, files, [
+      review('doc0_all_in_one', 'approved'),
+      review('doc9_health_receipt', 'rejected', '', 'ไม่ชัด'),
+    ]);
+    expect(stateOf(oneRejected, 'doc9_health_receipt')).toBe('rejected');
+    expect(oneRejected.complete).toBe(false);
+  });
+
   it('แอดมินอนุมัติ = ผ่าน แม้ไม่มีไฟล์ / ตีกลับ = ต้องแก้ แม้มีไฟล์', () => {
     const s = summarizeApplicantDocs(
       DOCS,

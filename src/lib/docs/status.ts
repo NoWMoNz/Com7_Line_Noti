@@ -7,7 +7,8 @@
  *
  *  1. แอดมินอนุมัติเอกสารทั้งชิ้น                → ผ่าน
  *  2. เอกสารทั้งชิ้น หรือหัวข้อย่อยใดถูกตีกลับ     → ต้องแก้ไข (ไม่ผ่าน)
- *  3. มีไฟล์รวม (all-in-one) ที่ไม่ถูกตีกลับ        → ผ่าน (ครอบคลุม)
+ *  3. ไฟล์รวม (all-in-one) อนุมัติแล้ว            → อนุมัติ (ทุกเอกสารที่ไม่ถูกตีกลับรายชิ้น)
+ *     มีไฟล์รวมที่ยังไม่ตรวจ                      → ผ่าน (ครอบคลุม, รอตรวจ)
  *  4. มีหัวข้อย่อย: ทุกหัวข้อที่ไม่ใช่ "ถ้ามี" ต้องอนุมัติแล้วหรือมีไฟล์ → ส่งครบ (รอตรวจ)
  *  5. ไม่มีหัวข้อย่อย: มีไฟล์อย่างน้อย 1 ไฟล์       → ส่งครบ (รอตรวจ)
  *  6. นอกนั้น                                    → ยังไม่ได้ส่ง
@@ -92,6 +93,7 @@ export function summarizeApplicantDocs(
   const hasAllInOne = allInOneDocs.some(
     (d) => docsWithFile.has(d.key) && reviewOf(d.key)?.status !== 'rejected',
   );
+  const allInOneApproved = allInOneDocs.some((d) => reviewOf(d.key)?.status === 'approved');
 
   const statuses: DocStatus[] = docs
     .filter((d) => !d.coversAll && !d.optional)
@@ -121,6 +123,8 @@ export function summarizeApplicantDocs(
       } else if (rejectedSub) {
         state = 'rejected';
         reason = rejectedSub.reason;
+      } else if (allInOneApproved) {
+        state = 'approved';
       } else if (hasAllInOne) {
         state = 'covered';
       } else if (doc.subitems.length > 0) {

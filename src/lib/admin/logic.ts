@@ -9,12 +9,22 @@ import type { FlexBubble } from '@/lib/line/types';
 import type { ApplicantStage, ReviewItemInput } from './types';
 
 /**
- * ผลตรวจที่ยังรอ HR จริง — ไม่นับหัวข้อย่อยที่ค้าง "รอตรวจ" ใต้เอกสารที่อนุมัติทั้งชิ้นแล้ว
- * (ข้อมูลจากระบบเดิมมีแบบนี้ หน้าตรวจก็แสดงเอกสารนั้นว่าอนุมัติแล้ว)
+ * ผลตรวจที่ยังรอ HR จริง — ไม่นับ:
+ *  - หัวข้อย่อยที่ค้าง "รอตรวจ" ใต้เอกสารที่อนุมัติทั้งชิ้นแล้ว (ข้อมูลจากระบบเดิมมีแบบนี้)
+ *  - เอกสารอื่นทั้งหมด เมื่อไฟล์รวม (all-in-one) อนุมัติแล้ว — ไฟล์รวมผ่าน = ทุกเอกสารผ่าน
  */
-export function pendingReviews<T extends Pick<DocReview, 'docKey' | 'subitemTitle' | 'status'>>(reviews: T[]): T[] {
+export function pendingReviews<T extends Pick<DocReview, 'docKey' | 'subitemTitle' | 'status'>>(
+  reviews: T[],
+  allInOneKeys: ReadonlySet<string> = new Set(),
+): T[] {
   const approvedDocs = new Set(reviews.filter((r) => r.subitemTitle === '' && r.status === 'approved').map((r) => r.docKey));
-  return reviews.filter((r) => r.status === 'pending_review' && !(r.subitemTitle !== '' && approvedDocs.has(r.docKey)));
+  const allInOneApproved = [...allInOneKeys].some((k) => approvedDocs.has(k));
+  return reviews.filter(
+    (r) =>
+      r.status === 'pending_review' &&
+      !(r.subitemTitle !== '' && approvedDocs.has(r.docKey)) &&
+      !(allInOneApproved && !allInOneKeys.has(r.docKey)),
+  );
 }
 
 export function applicantStage(applicant: Applicant, summary: ApplicantDocSummary | null, reviews: DocReview[]): ApplicantStage {
@@ -32,7 +42,8 @@ export function applicantStage(applicant: Applicant, summary: ApplicantDocSummar
 /** ช่องที่รอ HR ตรวจ — นับเป็นรายการ (เอกสารที่มีหัวข้อย่อยนับตามหัวข้อย่อย) */
 export function countPendingReview(reviews: DocReview[], docs: DocType[]): number {
   const withSubs = new Set(docs.filter((d) => d.subitems.length > 0).map((d) => d.key));
-  return pendingReviews(reviews).filter((r) => (withSubs.has(r.docKey) ? r.subitemTitle !== '' : r.subitemTitle === '')).length;
+  const allInOne = new Set(docs.filter((d) => d.coversAll).map((d) => d.key));
+  return pendingReviews(reviews, allInOne).filter((r) => (withSubs.has(r.docKey) ? r.subitemTitle !== '' : r.subitemTitle === '')).length;
 }
 
 export class ReviewInputError extends Error {}

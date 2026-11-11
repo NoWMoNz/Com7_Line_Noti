@@ -168,7 +168,7 @@ async function pushAndLog(row: Row, type: string, preview: string, messages: Lin
 
 /**
  * ผู้สมัครที่อนุมัติเอกสารครบทุกรายการแล้ว แต่ยังไม่แจ้งเริ่มงาน — คนกลุ่มนี้ไปอยู่หน้าแจ้งเริ่มงาน
- * คัดก่อนด้วย completed_at (ส่งครบ) แล้วค่อยตรวจ "อนุมัติครบ" ด้วยกฎกลาง (เหมือน listOnboarding)
+ * ตัดสินด้วย "อนุมัติครบ" ตามกฎกลางอย่างเดียว (เหมือน listOnboarding)
  */
 async function fullyApprovedIds(allDocs: DocType[]): Promise<string[]> {
   const rows = ok(
@@ -179,7 +179,6 @@ async function fullyApprovedIds(allDocs: DocType[]): Promise<string[]> {
       .is('onboard_notified_at', null)
       .is('closed_status', null)
       .eq('doc_scope', 'all')
-      .not('completed_at', 'is', null)
       .limit(1000),
     'fully approved candidates',
   ) as Array<{ id: string; required_doc_keys: string[] | null }>;

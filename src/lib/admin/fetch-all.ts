@@ -1,5 +1,6 @@
 import 'server-only';
 import type { SupabaseClient } from '@supabase/supabase-js';
+import { pendingReviews } from './logic';
 
 /** PostgREST ของ Supabase ตอบได้ครั้งละไม่เกิน 1,000 แถว (เกินจะถูกตัดเงียบๆ) */
 const PAGE = 1000;
@@ -55,13 +56,24 @@ async function reviewKeys(db: SupabaseClient, status: 'pending_review' | 'reject
 
 /**
  * ผู้สมัคร (ไม่ซ้ำ) ที่มีผลตรวจสถานะนี้อย่างน้อย 1 ช่อง — อ่านทีละ 1,000 แถว
- * "รอตรวจ" ใช้กฎเดียวกับ pendingReviews(): ไม่นับหัวข้อย่อยใต้เอกสารที่อนุมัติทั้งชิ้นแล้ว
+ * "รอตรวจ" ใช้กฎเดียวกับ pendingReviews() (ไม่นับหัวข้อย่อยใต้เอกสารที่อนุมัติแล้ว / ทุกอย่างเมื่อไฟล์รวมอนุมัติแล้ว)
  */
 export async function applicantIdsWithReview(db: SupabaseClient, status: 'pending_review' | 'rejected'): Promise<Set<string>> {
   if (status === 'rejected') return new Set((await reviewKeys(db, 'rejected')).map((r) => r.applicant_id));
-  const [pending, approvedParents] = await Promise.all([reviewKeys(db, 'pending_review'), reviewKeys(db, 'approved', true)]);
-  const approved = new Set(approvedParents.map((r) => `${r.applicant_id}\u0000${r.doc_key}`));
-  return new Set(
-    pending.filter((r) => !(r.subitem_title !== '' && approved.has(`${r.applicant_id}\u0000${r.doc_key}`))).map((r) => r.applicant_id),
-  );
+  const [pending, approvedParents, allInOneRes] = await Promise.all([
+    reviewKeys(db, 'pending_review'),
+    reviewKeys(db, 'approved', true),
+    db.from('doc_types').select('key').eq('covers_all', true),
+  ]);
+  if (allInOneRes.error) throw new Error(`doc_types: ${allInOneRes.error.message}`);
+  const allInOneKeys = new Set((allInOneRes.data as Array<{ key: string }>).map((d) => d.key));
+  const byApplicant = new Map<string, Array<{ docKey: string; subitemTitle: string; status: 'pending_review' | 'approved' }>>();
+  const push = (r: ReviewKey, s: 'pending_review' | 'approved') => {
+    const list = byApplicant.get(r.applicant_id) ?? [];
+    list.push({ docKey: r.doc_key, subitemTitle: r.subitem_title, status: s });
+    byApplicant.set(r.applicant_id, list);
+  };
+  pending.forEach((r) => push(r, 'pending_review'));
+  approvedParents.forEach((r) => push(r, 'approved'));
+  return new Set([...byApplicant].filter(([, list]) => pendingReviews(list, allInOneKeys).length > 0).map(([id]) => id));
 }

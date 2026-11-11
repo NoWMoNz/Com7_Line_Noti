@@ -78,6 +78,16 @@ describe('countPendingReview', () => {
     ];
     expect(countPendingReview(reviews, DOCS)).toBe(1);
   });
+
+  it('ไฟล์รวมอนุมัติแล้ว → เอกสารอื่นที่ค้างรอตรวจไม่นับ', () => {
+    const reviews = [
+      rv('doc0_all_in_one', '', 'approved'),
+      rv('doc1_application_set', 'ใบสมัครหน้าที่ 1', 'pending_review'),
+      rv('doc9_health_receipt', '', 'pending_review'),
+    ];
+    expect(countPendingReview(reviews, DOCS)).toBe(0);
+    expect(applicantStage(person(), summarizeApplicantDocs(DOCS, [], reviews), reviews)).toBe('complete');
+  });
 });
 
 describe('applicantStage กับหัวข้อย่อยค้าง', () => {
