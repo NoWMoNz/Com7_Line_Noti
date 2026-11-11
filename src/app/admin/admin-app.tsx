@@ -1,5 +1,6 @@
 'use client';
 
+import { useSearchParams } from 'next/navigation';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import {
   APPLICANT_LIST_VIEWS,
@@ -17,17 +18,16 @@ import { ApplicantDetailPanel, type DetailActions } from './applicant-detail';
 import { ApplicantInfoForm } from './applicant-info';
 import { ApplicantList } from './applicant-list';
 
-/** id ผู้สมัครที่เลือก เก็บใน ?id= — รีเฟรช/ส่งลิงก์ให้เพื่อนร่วมทีมแล้วเปิดคนเดิมได้ */
-function readSelected(): string | null {
-  return new URLSearchParams(window.location.search).get('id');
-}
-/** ?filter= / ?view= — ลิงก์จากหน้าภาพรวม และรีเฟรชแล้วยังอยู่แท็บเดิม */
-function readFilter(): ApplicantListFilter {
-  const f = new URLSearchParams(window.location.search).get('filter');
+/*
+ * แท็บ (?filter=), มุมมองด่วน (?view=) และผู้สมัครที่เลือก (?id=) อ่านจาก URL ทุกครั้ง ไม่เก็บเป็น state
+ * — cacheComponents ทำให้ Next เก็บหน้านี้ไว้ (React <Activity>) ไม่ unmount เวลาไปหน้าอื่น
+ *   ถ้าอ่าน URL แค่ตอน mount กดการ์ดในหน้าภาพรวมกลับมาจะเห็นแท็บเดิมค้างอยู่
+ * — เปลี่ยนค่าด้วย history.replaceState ซึ่ง Next ซิงก์เข้า useSearchParams ให้
+ */
+function parseFilter(f: string | null): ApplicantListFilter {
   return f === 'pending_approval' || f === 'approved' || f === 'closed' ? f : 'all';
 }
-function readView(): ApplicantListView | null {
-  const v = new URLSearchParams(window.location.search).get('view');
+function parseView(v: string | null): ApplicantListView | null {
   return APPLICANT_LIST_VIEWS.find((x) => x === v) ?? null;
 }
 function writeListParams(filter: ApplicantListFilter, view: ApplicantListView | null) {
@@ -49,15 +49,18 @@ export function AdminApp() {
   const me = useAdmin();
   const canRemind = canAccess(me.role, 'reminders');
   const [q, setQ] = useState('');
-  // ?filter= / ?view= จากลิงก์ในหน้าภาพรวม
-  const [filter, setFilter] = useState<ApplicantListFilter>(readFilter);
-  const [view, setView] = useState<ApplicantListView | null>(readView);
-  const [page, setPage] = useState(1);
+  const params = useSearchParams();
+  const view = parseView(params.get('view'));
+  const filter = view ? 'all' : parseFilter(params.get('filter'));
+  const selectedId = params.get('id');
+  // หน้าที่ของรายชื่อ — เปลี่ยนแท็บ/มุมมอง (รวมถึงมาจากลิงก์หน้าภาพรวม) → กลับไปหน้า 1
+  const listKey = `${filter}|${view ?? ''}`;
+  const [pageState, setPageState] = useState({ key: listKey, page: 1 });
+  const page = pageState.key === listKey ? pageState.page : 1;
+  const setPage = (p: number) => setPageState({ key: listKey, page: p });
   const [list, setList] = useState<ApplicantListResult | null>(null);
   const [listLoading, setListLoading] = useState(true);
   const [listError, setListError] = useState<string | null>(null);
-  // render หลัง AdminShell รู้ตัวแอดมินแล้ว (ฝั่ง browser เท่านั้น) จึงอ่าน URL ได้เลย
-  const [selectedId, setSelectedId] = useState<string | null>(readSelected);
   /** ผลโหลดรายละเอียดล่าสุด ผูกกับ id — ไม่ตรงกับ selectedId = กำลังโหลด */
   const [loaded, setLoaded] = useState<{ id: string; detail: ApplicantDetail | null; error: string | null } | null>(null);
   const listSeq = useRef(0);
@@ -106,7 +109,6 @@ export function AdminApp() {
     if (dirtyRef.current && id !== selectedId && !window.confirm('มีผลตรวจที่ยังไม่บันทึก — ออกจากหน้านี้โดยไม่บันทึก?')) return;
     dirtyRef.current = false;
     setCreating(false);
-    setSelectedId(id);
     writeSelected(id);
   };
 
@@ -165,15 +167,9 @@ export function AdminApp() {
               setPage(1);
             }}
             onFilter={(f) => {
-              setFilter(f);
-              setView(null);
-              setPage(1);
               writeListParams(f, null);
             }}
             onView={(v) => {
-              setView(v);
-              setFilter('all');
-              setPage(1);
               writeListParams('all', v);
             }}
             onPage={setPage}

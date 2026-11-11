@@ -1,6 +1,7 @@
 'use client';
 
 import Link from 'next/link';
+import { useSearchParams } from 'next/navigation';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   fillTemplate,
@@ -25,8 +26,14 @@ export function OnboardingApp() {
   const [data, setData] = useState<OnboardingData | null>(null);
   const [branches, setBranches] = useState<BranchOption[]>([]);
   const [error, setError] = useState<string | null>(null);
-  // ?tab=sent จากหน้าภาพรวม (แจ้งเริ่มงานแล้ว)
-  const [tab, setTab] = useState<Tab>(() => (new URLSearchParams(window.location.search).get('tab') === 'sent' ? 'sent' : 'pending'));
+  // ?tab=sent จากหน้าภาพรวม (แจ้งเริ่มงานแล้ว) — อ่านจาก URL ทุกครั้ง เพราะ Next เก็บหน้านี้ไว้ไม่ unmount (cacheComponents)
+  const tab: Tab = useSearchParams().get('tab') === 'sent' ? 'sent' : 'pending';
+  const setTab = (t: Tab) => {
+    const url = new URL(window.location.href);
+    if (t === 'sent') url.searchParams.set('tab', 'sent');
+    else url.searchParams.delete('tab');
+    window.history.replaceState(null, '', url);
+  };
   const [q, setQ] = useState('');
   const [openId, setOpenId] = useState<string | null>(null);
   const [bulk, setBulk] = useState<{ busy: boolean; result: string | null }>({ busy: false, result: null });
