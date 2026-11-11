@@ -113,8 +113,12 @@ function itemLabel(item: ReviewItemInput, allDocs: DocType[]): string {
  * ข้อความ LINE หลัง HR กดบันทึกผลตรวจ — ส่งเฉพาะเรื่องที่ผู้สมัครต้องรู้/ต้องทำ:
  *  - มีรายการไม่ผ่าน → 1 ข้อความรวมทุกรายการ + เหตุผล + ปุ่มเปิดหน้าส่งเอกสารที่เอกสารแรกที่ต้องแก้
  *  - อนุมัติครบทุกรายการ (ครั้งแรก) → 1 ข้อความแจ้งว่าครบแล้ว
- *  - ผ่านบางรายการ → ไม่แจ้ง (ระบบเดิมส่ง "เอกสารผ่าน" ทุกครั้งที่กด ผู้สมัครได้ข้อความรัวๆ)
+ *  - ผ่านบางรายการ → 1 ข้อความรวมรายการที่ผ่านในการบันทึกครั้งนี้ + ความคืบหน้า
+ *    (รวมเป็นข้อความเดียวต่อการกดบันทึก ไม่ส่งทีละรายการแบบระบบเดิม)
+ *  - มีทั้งผ่านและไม่ผ่าน → ข้อความ "ผ่าน" ตามด้วยข้อความ "ต้องแก้ไข"
  */
+export type ReviewMessageType = 'approved' | 'rejected' | 'all_approved';
+
 export function buildReviewMessages(opts: {
   applicantName: string;
   items: ReviewItemInput[];
@@ -125,10 +129,44 @@ export function buildReviewMessages(opts: {
   /** ลิงก์เปิดหน้าส่งเอกสาร (docKey = เปิดเอกสารนั้นเลย) */
   linkFor: (docKey?: string) => string;
   logoUrl: string | null;
-}): Array<{ type: 'rejected' | 'all_approved'; altText: string; bubble: FlexBubble }> {
+  /** เอกสารที่อนุมัติแล้ว / ทั้งหมด หลังบันทึกครั้งนี้ — ใส่ในข้อความ "ผ่าน" */
+  progress?: { approved: number; total: number };
+}): Array<{ type: ReviewMessageType; altText: string; bubble: FlexBubble }> {
   const { applicantName, items, allDocs, logoUrl } = opts;
-  const out: Array<{ type: 'rejected' | 'all_approved'; altText: string; bubble: FlexBubble }> = [];
+  const out: Array<{ type: ReviewMessageType; altText: string; bubble: FlexBubble }> = [];
   const rejected = items.filter((i) => i.status === 'rejected');
+  const approved = items.filter((i) => i.status === 'approved');
+
+  // ผ่านบางรายการ (ยังไม่ครบชุด) — ครบชุดแล้วใช้ข้อความ "ผ่านครบ" ด้านล่างแทน
+  if (approved.length > 0 && !(opts.becameComplete && rejected.length === 0)) {
+    const labels = [...new Set(approved.map((i) => itemLabel(i, allDocs)))];
+    const p = opts.progress;
+    const remaining = p ? p.total - p.approved : 0;
+    out.push({
+      type: 'approved',
+      altText: `เอกสารของคุณ${applicantName} ผ่านการตรวจสอบแล้ว: ${labels.join(', ')}`.slice(0, 400),
+      bubble: buildNotifyFlex({
+        tone: 'success',
+        title: 'เอกสารผ่านการตรวจสอบ',
+        subtitle: 'ตรวจโดย HR',
+        greeting: labels.length === 1 ? labels[0] : `เอกสารที่ผ่าน ${labels.length} รายการ`,
+        list: labels.length > 1 ? { title: 'รายการที่ผ่าน', items: labels } : undefined,
+        note:
+          p && p.total > 0
+            ? {
+                label: 'ความคืบหน้า',
+                text:
+                  remaining > 0
+                    ? `ผ่านแล้ว ${p.approved} จาก ${p.total} รายการ — เหลืออีก ${remaining} รายการ`
+                    : `ผ่านแล้ว ${p.approved} จาก ${p.total} รายการ`,
+                tone: 'success',
+              }
+            : undefined,
+        button: { label: 'ดูสถานะเอกสาร', uri: opts.linkFor() },
+        logoUrl,
+      }),
+    });
+  }
 
   if (rejected.length > 0) {
     const labels = rejected.map((i) => itemLabel(i, allDocs));

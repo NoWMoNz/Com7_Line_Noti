@@ -164,16 +164,32 @@ describe('buildReviewMessages', () => {
       { docKey: 'doc9_health_receipt', subitemTitle: '', status: 'rejected', reason: 'ส่งผิดเอกสาร' },
       { docKey: 'doc11_guarantor_copy', subitemTitle: '', status: 'approved', reason: '' },
     ]);
-    expect(msgs.map((m) => m.type)).toEqual(['rejected']);
-    const s = JSON.stringify(msgs[0].bubble);
+    expect(msgs.map((m) => m.type)).toEqual(['approved', 'rejected']);
+    const s = JSON.stringify(msgs[1].bubble);
     expect(s).toContain('ใบสมัคร - ใบสมัครหน้าที่ 2: ภาพไม่ชัด');
     expect(s).toContain('ใบเสร็จตรวจสุขภาพ: ส่งผิดเอกสาร');
     expect(s).toContain('https://miniapp.line.me/L?doc=doc1_application_set');
   });
 
-  it('ผ่านบางรายการ → ไม่ส่งข้อความ / ผ่านจนครบครั้งแรก → แจ้งครบ 1 ข้อความ', () => {
-    const approved: ReviewItemInput[] = [{ docKey: 'doc9_health_receipt', subitemTitle: '', status: 'approved', reason: '' }];
-    expect(build(approved)).toEqual([]);
+  it('ผ่านบางรายการ → แจ้ง "ผ่าน" 1 ข้อความพร้อมความคืบหน้า / ผ่านจนครบครั้งแรก → แจ้งครบอย่างเดียว', () => {
+    const approved: ReviewItemInput[] = [
+      { docKey: 'doc9_health_receipt', subitemTitle: '', status: 'approved', reason: '' },
+      { docKey: 'doc11_guarantor_copy', subitemTitle: '', status: 'approved', reason: '' },
+    ];
+    const msgs = buildReviewMessages({
+      applicantName: 'สมชาย',
+      items: approved,
+      allDocs: DOCS,
+      becameComplete: false,
+      linkFor,
+      logoUrl: null,
+      progress: { approved: 5, total: 8 },
+    });
+    expect(msgs.map((m) => m.type)).toEqual(['approved']);
+    const s = JSON.stringify(msgs[0].bubble);
+    expect(s).toContain('ใบเสร็จตรวจสุขภาพ');
+    expect(s).toContain('สำเนาเอกสารคนค้ำ');
+    expect(s).toContain('ผ่านแล้ว 5 จาก 8 รายการ — เหลืออีก 3 รายการ');
     expect(build(approved, true).map((m) => m.type)).toEqual(['all_approved']);
   });
 

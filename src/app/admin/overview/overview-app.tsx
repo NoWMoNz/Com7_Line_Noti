@@ -35,6 +35,7 @@ const TYPE_LABEL: Record<string, string> = {
   approved: 'อนุมัติผู้สมัคร',
   doc_rejected: 'เอกสารต้องแก้ไข',
   doc_approved: 'เอกสารผ่าน',
+  docs_all_approved: 'เอกสารผ่านครบ',
   docs_complete: 'ส่งเอกสารครบ',
   onboarding: 'แจ้งเริ่มงาน',
   custom: 'ข้อความจาก HR',

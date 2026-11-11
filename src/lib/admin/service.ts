@@ -693,11 +693,12 @@ export async function reviewDocuments(admin: AdminProfile, id: string, rawItems:
       initialOnly: detail.docScope === 'initial',
       linkFor: (doc) => buildAppLink(handler, { doc }),
       logoUrl,
+      progress: { approved: summary.docs.filter((d) => d.state === 'approved' || d.state === 'covered').length, total: summary.total },
     });
     for (const m of messages) {
       await pushAndLog(
         row,
-        m.type === 'rejected' ? 'doc_rejected' : 'docs_all_approved',
+        m.type === 'rejected' ? 'doc_rejected' : m.type === 'approved' ? 'doc_approved' : 'docs_all_approved',
         m.altText,
         [{ type: 'flex', altText: m.altText, contents: m.bubble }],
         by,
