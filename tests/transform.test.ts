@@ -57,7 +57,7 @@ const EXPORT: SheetExport = {
     ],
     Notification_Log: [
       ['TimeStamp', 'Type', 'Applicant_ID', 'Applicant_Name', 'Phone', 'Sent_By', 'Status', 'Message_Preview', 'Error'],
-      ["'09/11/2026 08:00:00", 'reminder', 'APP_1', 'สมชาย', '', 'System', 'ok', 'เตือน', ''],
+      ["'09/11/2026 08:00:00", 'reminder', 'APP_1', 'สมชาย', 812345678, 'System', 'ok', 'เตือน', ''],
     ],
     Database_Logs: [
       ['TimeStamp', 'Name', 'Action', 'Target_ID', 'Changes_Detail'],
@@ -168,7 +168,12 @@ describe('buildMigrationPlan', () => {
       { key: 'LIFF_ID', value: '123-abc' },
       { key: 'ONBOARD_TEMPLATES', value: { Com7: 'สวัสดี' } },
     ]);
-    expect(plan.notifications[0]).toMatchObject({ type: 'reminder', applicant_code: 'APP_1', created_at: '2026-11-09T01:00:00.000Z' });
+    expect(plan.notifications[0]).toMatchObject({
+      type: 'reminder',
+      applicant_code: 'APP_1',
+      created_at: '2026-11-09T01:00:00.000Z',
+      phone: '0812345678', // ชีทเก็บเป็นตัวเลข 0 นำหน้าหาย
+    });
     expect(plan.audits[0]).toMatchObject({ kind: 'activity', actor: 'สมชาย', target_id: 'APP_1' });
   });
 });

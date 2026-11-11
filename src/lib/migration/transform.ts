@@ -577,7 +577,7 @@ export function buildMigrationPlan(exp: SheetExport): MigrationPlan {
       type: g('Type') ?? 'unknown',
       applicant_code: g('Applicant_ID'),
       applicant_name: g('Applicant_Name'),
-      phone: g('Phone'),
+      phone: orNull(normalizeThaiPhone(g('Phone'))),
       sent_by: g('Sent_By') ?? 'System',
       status: g('Status') ?? 'ok',
       message_preview: g('Message_Preview'),
@@ -621,7 +621,15 @@ export function buildMigrationPlan(exp: SheetExport): MigrationPlan {
     branches,
     applicants,
     files,
-    reviews: [...reviewsByKey.values()],
+    // หัวข้อย่อยที่ค้าง "รอตรวจ" ใต้เอกสารที่อนุมัติทั้งชิ้นแล้ว → ทิ้ง (ระบบใหม่ล้างแบบนี้ตอนอนุมัติทั้งชิ้นอยู่แล้ว)
+    reviews: [...reviewsByKey.values()].filter(
+      (r) =>
+        !(
+          r.subitem_title !== '' &&
+          r.status === 'pending_review' &&
+          reviewsByKey.get(`${r.applicant_code}\u0000${r.doc_key}\u0000`)?.status === 'approved'
+        ),
+    ),
     admins,
     settings,
     notifications,

@@ -1,8 +1,10 @@
 /**
- * ย้ายข้อมูลจาก Google Sheets (ไฟล์ JSON จาก ExportForMigration.gs) เข้า Supabase
+ * ย้ายข้อมูลจาก Google Sheets เข้า Supabase — รับได้ 2 แบบ:
+ *   - .xlsx ที่ดาวน์โหลดจาก Google Sheets (File → Download → Microsoft Excel)
+ *   - .json จาก ExportForMigration.gs
  *
- *   npm run migrate -- <ไฟล์.json> --dry-run   # ดูจำนวนแถว + คำเตือน ไม่เขียนอะไร
- *   npm run migrate -- <ไฟล์.json>             # เขียนจริง
+ *   npm run migrate -- <ไฟล์.xlsx|.json> --dry-run   # ดูจำนวนแถว + คำเตือน ไม่เขียนอะไร
+ *   npm run migrate -- <ไฟล์.xlsx|.json>             # เขียนจริง
  *
  * รันซ้ำได้ (idempotent): ผู้สมัคร upsert ตาม code, ไฟล์/log ที่มาจากระบบเดิมถูกลบแล้วใส่ใหม่
  * ⚠️ ข้อมูลสาขา (branches) ถูกแทนที่ทั้งหมดด้วยข้อมูลจากชีท — ใช้ก่อนเปิดระบบใหม่เท่านั้น
@@ -12,6 +14,7 @@
 import { existsSync, readFileSync } from 'node:fs';
 import { createClient, type SupabaseClient } from '@supabase/supabase-js';
 import { buildMigrationPlan, type MigrationPlan, type SheetExport } from '../src/lib/migration/transform';
+import { EXPORT_SHEETS, readXlsxExport } from './read-xlsx-export';
 
 const BATCH = 500;
 
@@ -156,12 +159,22 @@ async function main() {
   const file = args.find((a) => !a.startsWith('--'));
   const dryRun = args.includes('--dry-run');
   if (!file) {
-    console.error('ใช้งาน: npm run migrate -- <ไฟล์ export.json> [--dry-run]');
+    console.error('ใช้งาน: npm run migrate -- <ไฟล์ .xlsx หรือ export.json> [--dry-run]');
     process.exit(1);
   }
   if (existsSync('.env.local')) process.loadEnvFile('.env.local');
 
-  const plan = buildMigrationPlan(JSON.parse(readFileSync(file, 'utf8')) as SheetExport);
+  let exp: SheetExport;
+  if (/\.xlsx$/i.test(file)) {
+    exp = await readXlsxExport(file);
+    const found = Object.keys(exp.sheets);
+    const missing = EXPORT_SHEETS.filter((s) => !found.includes(s));
+    console.log(`อ่าน .xlsx: พบแท็บ ${found.join(', ') || '(ไม่มี)'}`);
+    if (missing.length) console.warn(`⚠️ ไม่พบแท็บ: ${missing.join(', ')}`);
+  } else {
+    exp = JSON.parse(readFileSync(file, 'utf8')) as SheetExport;
+  }
+  const plan = buildMigrationPlan(exp);
   printPlan(plan);
   if (dryRun) {
     console.log('\n--dry-run: ไม่ได้เขียนข้อมูล');

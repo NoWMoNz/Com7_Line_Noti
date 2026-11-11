@@ -171,14 +171,19 @@ vercel env ls production             # ดูตัวแปร (ค่าลั
 
 ## ย้ายข้อมูลจาก Google Sheets
 
-1. เปิดโปรเจกต์ Apps Script เดิม → เพิ่มไฟล์ใหม่ → วางเนื้อหา `scripts/gas/ExportForMigration.gs`
-2. รัน `exportForMigration` → ดาวน์โหลดไฟล์ JSON จาก URL ใน Execution log
-   (ไม่ส่งออก hash รหัสผ่านและ token ของแอดมิน)
-3. ทดลองก่อน: `npm run migrate -- ./com7-recruit-export-xxxx.json --dry-run`
+1. ได้ไฟล์ข้อมูลจากชีทเดิม — เลือกทางใดทางหนึ่ง:
+   - **ง่ายสุด:** Google Sheets → File → Download → Microsoft Excel (.xlsx)
+     สคริปต์อ่านแท็บ `Applicants`, `DocConfig`, `Config`, `Database`, `Login Admin`,
+     `Notification_Log`, `Audit_Log`, `Database_Logs` และตัดคอลัมน์รหัสผ่าน/token ของแอดมินทิ้งเอง
+     วันที่ถือเป็นเวลาไทย (โซนเวลาของชีทเดิม)
+   - หรือ Apps Script: วาง `scripts/gas/ExportForMigration.gs` ในโปรเจกต์เดิม → รัน `exportForMigration`
+     → ดาวน์โหลดไฟล์ JSON จาก URL ใน Execution log
+2. ทดลองก่อน: `npm run migrate -- ./ไฟล์.xlsx --dry-run` (หรือ `.json`)
    — ดูจำนวนแถวและคำเตือน เช่น LINE ID ซ้ำ, ผลตรวจที่อ้างถึงเอกสารที่ไม่มีแล้ว
-4. นำเข้าจริง: `npm run migrate -- ./com7-recruit-export-xxxx.json`
+3. นำเข้าจริง: `npm run migrate -- ./ไฟล์.xlsx`
 
 > ⚠️ ไฟล์ export มีข้อมูลส่วนบุคคล (PDPA) — ห้าม commit (gitignore กันไว้แล้ว)
+> ไฟล์ .xlsx ยังมี hash รหัสผ่านแอดมินอยู่ในไฟล์ (สคริปต์แค่ไม่นำเข้า) — ยิ่งต้องลบทิ้ง
 > ลบจาก Drive และจากเครื่องเมื่อย้ายเสร็จ
 
 - รันซ้ำได้: ผู้สมัคร upsert ตามรหัสเดิม, ไฟล์และ log จากระบบเดิมถูกแทนที่
