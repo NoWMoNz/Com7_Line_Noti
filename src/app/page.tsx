@@ -1,35 +1,21 @@
-const PHASES = [
-  { done: true, title: 'ฐานข้อมูล + ย้ายข้อมูลจาก Google Sheets', detail: 'schema, สคริปต์ย้ายข้อมูล, กฎสถานะเอกสาร' },
-  { done: true, title: 'LINE webhook', detail: 'เมนูเอกสาร, รับไฟล์ผ่านแชท, ตรวจลายเซ็น LINE' },
-  { done: true, title: 'หน้าผู้สมัคร (LINE MINI App)', detail: 'ลงทะเบียน, PDPA, อัปโหลดเอกสาร, ดูสถานะ' },
-  { done: false, title: 'หน้าแอดมิน', detail: 'Dashboard, ตรวจเอกสาร, แจ้งเริ่มงาน, สาขา, ผู้ใช้' },
-  { done: false, title: 'งานตามเวลา + ย้ายไฟล์จาก Drive', detail: 'แจ้งเตือนอัตโนมัติ, ติดตาม 3 วัน, ปิดระบบเดิม' },
-];
+import { redirect } from 'next/navigation';
 
-export default function Home() {
-  return (
-    <main className="mx-auto w-full max-w-xl px-4 py-16">
-      <p className="text-sm font-semibold text-brand">Com7 Recruitment</p>
-      <h1 className="mt-1 text-2xl font-bold">ระบบติดตามเอกสารผู้สมัคร — เวอร์ชันใหม่</h1>
-      <p className="mt-2 text-muted">กำลังพัฒนาเพื่อแทนระบบเดิมบน Google Apps Script</p>
-
-      <ol className="mt-8 divide-y divide-line rounded-lg border border-line">
-        {PHASES.map((p) => (
-          <li key={p.title} className="flex gap-3 px-4 py-3">
-            <span
-              aria-hidden
-              className={`mt-1.5 size-2.5 shrink-0 rounded-full ${p.done ? 'bg-brand' : 'border border-muted'}`}
-            />
-            <div>
-              <p className="font-medium">
-                {p.title}
-                <span className="sr-only">{p.done ? ' (เสร็จแล้ว)' : ' (ยังไม่เริ่ม)'}</span>
-              </p>
-              <p className="text-sm text-muted">{p.detail}</p>
-            </div>
-          </li>
-        ))}
-      </ol>
-    </main>
-  );
+/**
+ * หน้าแรก (/) ไม่มีเนื้อหาของตัวเอง
+ * - มาจาก LINE / ลิงก์ผู้สมัคร (มี token, doc หรือ liff.state) → หน้าผู้สมัคร พร้อม query เดิม
+ *   (กันกรณี Endpoint URL ของ LIFF ตั้งไว้ที่โดเมนเปล่าๆ)
+ * - นอกนั้น → หน้าแอดมิน (ยังไม่ล็อกอินจะไปหน้าเข้าสู่ระบบเอง)
+ */
+export default async function Home({
+  searchParams,
+}: {
+  searchParams: Promise<Record<string, string | string[] | undefined>>;
+}) {
+  const sp = await searchParams;
+  const q = new URLSearchParams();
+  for (const [k, v] of Object.entries(sp)) {
+    for (const one of Array.isArray(v) ? v : v === undefined ? [] : [v]) q.append(k, one);
+  }
+  if (q.has('token') || q.has('doc') || q.has('liff.state')) redirect(`/apply?${q}`);
+  redirect('/admin');
 }
